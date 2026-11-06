@@ -26,6 +26,13 @@ INSERT OR IGNORE INTO config (key, value) VALUES
   ('online_max',     '20'),      -- most squares in one online order
   ('reserve_minutes','30'),      -- online order must be marked paid within this
   ('confirm_hours',  '24'),      -- ...then confirmed by the admin within this
+  ('org_name',       ''),        -- e.g. "GHEMS PTA"
+  ('contact',        ''),        -- shown wherever the site says "contact the organizers"
+  ('about_text',     ''),        -- short blurb on the public page
+  ('color_main',     '#1d4f91'),
+  ('color_accent',   '#f5b700'),
+  ('logo_ver',       '0'),       -- bumped when the logo changes (0 = no logo)
+  ('setup_done',     '0'),       -- first-run setup wizard finished
   ('version',        '1'),       -- bumped on every change so screens know to refresh
   ('live_cache',     '');        -- last ESPN result (JSON)
 
@@ -101,6 +108,21 @@ CREATE TABLE IF NOT EXISTS score_overrides (
   side    INTEGER NOT NULL
 );
 
+-- Passcode hashes and the sign-in key. Kept out of the config table so they
+-- never travel with settings.
+CREATE TABLE IF NOT EXISTS auth (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
+-- Uploaded images: the logo (shown in headers) and the home-screen icon.
+CREATE TABLE IF NOT EXISTS assets (
+  name       TEXT PRIMARY KEY,
+  mime       TEXT NOT NULL,
+  data       TEXT NOT NULL,     -- base64
+  updated_at INTEGER NOT NULL
+);
+
 -- Failed passcode attempts, for slowing down guessing.
 CREATE TABLE IF NOT EXISTS login_failures (
   ip       TEXT PRIMARY KEY,
@@ -143,6 +165,17 @@ export const UPGRADES = [
       'ALTER TABLE sales ADD COLUMN ip TEXT',
       'CREATE INDEX IF NOT EXISTS sales_status ON sales (status, expires_at)',
       "INSERT OR IGNORE INTO config (key, value) VALUES ('online_open', '0'), ('online_max', '20'), ('reserve_minutes', '30'), ('confirm_hours', '24')",
+    ],
+  },
+  {
+    marker: 'upgrade_auth_table',
+    sql: ['CREATE TABLE IF NOT EXISTS auth (key TEXT PRIMARY KEY, value TEXT NOT NULL)'],
+  },
+  {
+    marker: 'upgrade_branding',
+    sql: [
+      'CREATE TABLE IF NOT EXISTS assets (name TEXT PRIMARY KEY, mime TEXT NOT NULL, data TEXT NOT NULL, updated_at INTEGER NOT NULL)',
+      "INSERT OR IGNORE INTO config (key, value) VALUES ('org_name', ''), ('contact', ''), ('about_text', ''), ('color_main', '#1d4f91'), ('color_accent', '#f5b700'), ('logo_ver', '0'), ('setup_done', '0')",
     ],
   },
 ];

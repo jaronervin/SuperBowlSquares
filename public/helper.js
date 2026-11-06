@@ -1,4 +1,4 @@
-import { $, esc, api, money, toast, signIn, session, saveSession, boardHtml, sqLabel, fitBoard, onResize, payQrHtml } from './common.js?v=17';
+import { $, esc, api, money, toast, signIn, session, saveSession, boardHtml, sqLabel, fitBoard, onResize, payQrHtml } from './common.js?v=19';
 
 const CART_KEY = 'squares-cart';
 const METHODS = [

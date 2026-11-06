@@ -1,4 +1,4 @@
-import { $, esc, api, money, toast, boardHtml, winningIdx, scoresHtml, sqLabel, fitBoard, onResize, venmoLink, payQrHtml } from './common.js?v=17';
+import { $, esc, api, money, toast, boardHtml, winningIdx, scoresHtml, sqLabel, fitBoard, onResize, venmoLink, payQrHtml } from './common.js?v=19';
 
 const params = new URLSearchParams(location.search);
 const me = params.get('me');
@@ -19,8 +19,12 @@ function render() {
   const { config: cfg, boards, scores, mine, meName } = data;
   document.title = cfg.title;
   $('#title').textContent = cfg.title;
-  $('#subtitle').textContent = cfg.subtitle;
   $('#prize').textContent = cfg.prize_text;
+  $('#subtitle').textContent = [cfg.org_name, cfg.subtitle].filter(Boolean).join(' · ');
+  const about = $('#about');
+  about.classList.toggle('hidden', !cfg.about_text);
+  if (cfg.about_text) about.innerHTML = `<h2>About this fundraiser</h2><p class="about" style="margin:0">${esc(cfg.about_text)}</p>`;
+  $('#contactLine').innerHTML = cfg.contact ? `Questions? Contact ${contactHtml(cfg.contact)}.` : '';
   $('#how').textContent =
     `Each square wins when the last digit of ${cfg.top_name}'s score matches its column and the last digit of ${cfg.side_name}'s score matches its row, at the end of each quarter. Q4 uses the score at the end of regulation; overtime doesn't count.`;
   $('#scores').classList.remove('muted');
@@ -112,6 +116,16 @@ function render() {
 onResize(() => fitBoard($('#board .board')));
 
 // ---- an online order that isn't confirmed yet
+// An email or phone number as a tappable link.
+function contactHtml(c) {
+  const v = String(c || '').trim();
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return `<a href="mailto:${esc(v)}">${esc(v)}</a>`;
+  const digits = v.replace(/[^\d+]/g, '');
+  if (digits.length >= 10 && /^[\d\s().+-]+$/.test(v)) return `<a href="tel:${esc(digits)}">${esc(v)}</a>`;
+  return esc(v);
+}
+const organizers = () => (data?.config?.contact ? `the organizers (${contactHtml(data.config.contact)})` : 'the organizers');
+
 const orderNote = (o) => `Squares ${o.squares.map(([b, i]) => sqLabel(b, i)).join(' ')} Order ${o.code}`;
 let orderOffset = 0;
 
@@ -129,7 +143,7 @@ function orderHtml(o, name) {
            <span class="memo">${esc(note)}</span></div>
          <details class="small"><summary>On a computer? Scan with your phone instead</summary>
            <div class="pay" style="grid-template-columns:180px;margin-top:8px">${payQrHtml(user, o.amount_cents, note)}</div></details>`
-      : `<div class="msg">Ask the organizers how to pay ${amount}, and mention order <strong>${esc(o.code)}</strong>.</div>`;
+      : `<div class="msg">Ask ${organizers()} how to pay ${amount}, and mention order <strong>${esc(o.code)}</strong>.</div>`;
     return `<h2>Hi ${esc(name)}! Pay to lock in your squares</h2>
       <p style="margin-top:6px">Your squares <strong>${list}</strong> are saved for you for <strong id="orderLeft"></strong> more.</p>
       <div class="stack">
@@ -151,7 +165,7 @@ function orderHtml(o, name) {
     cancelled: 'You cancelled this order.',
   }[o.status] || 'This order is closed.';
   return `<h2>Order ${esc(o.code)} is closed</h2>
-    <p>${why} Its squares went back on sale.${o.status === 'cancelled' ? '' : ' If you already paid, contact the organizers.'}</p>
+    <p>${why} Its squares went back on sale.${o.status === 'cancelled' ? '' : ` If you already paid, contact ${organizers()}.`}</p>
     <p><a href="/buy">Buy squares</a></p>`;
 }
 

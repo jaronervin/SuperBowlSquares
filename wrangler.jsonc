@@ -6,7 +6,9 @@
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
-    "run_worker_first": ["/api/*"]
+    // The worker also serves the pages themselves, to put each group's name,
+    // colors and logo into them before they reach the browser.
+    "run_worker_first": ["/api/*", "/", "/index.html", "/buy", "/buy.html", "/helper", "/helper.html", "/admin", "/admin.html"]
   },
   "d1_databases": [
     {

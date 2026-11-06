@@ -1,8 +1,23 @@
-import { $, esc, api, money, toast, signIn, session, saveSession, sqLabel } from './common.js?v=17';
+import { $, esc, api, money, toast, signIn, session, saveSession, sqLabel } from './common.js?v=19';
+import { brandingEditor } from './branding.js?v=19';
+import { runWizard } from './wizard.js?v=19';
 
 let data = null;
 let saleFilter = '';
 let espn = null; // { date, games } from “Find the game on ESPN”, or { error }
+// Branding edits in progress survive the page redrawing (e.g. after confirming an order).
+let brandDraft = null;
+let brandDirty = false;
+let wizardActive = false;
+const brandBusy = () => wizardActive || brandDirty || document.querySelector('.cropper');
+
+async function openWizard() {
+  wizardActive = true;
+  await runWizard($('#app'), data.config);
+  wizardActive = false;
+  // Reload so the whole page picks up the new name, colors and logo.
+  location.reload();
+}
 
 const METHOD_LABEL = { venmo: 'Venmo', cash: 'Cash', zelle: 'Zelle', other: 'Other' };
 const when = (ms) => (ms ? new Date(ms).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : '');
@@ -18,6 +33,7 @@ async function load() {
     }
     throw e;
   }
+  if (wizardActive) return;
   render();
 }
 
@@ -179,6 +195,25 @@ function render() {
       .join('')}
     </tbody></table></div></section>`;
 
+  // ---- branding
+  if (!brandDraft) {
+    brandDraft = { main: cfg.color_main, accent: cfg.color_accent, title: cfg.title, orgName: cfg.org_name,
+      logoVer: cfg.logo_ver, contact: cfg.contact, about: cfg.about_text };
+  }
+  h += `<section class="card" id="branding"><div class="row" style="justify-content:space-between">
+      <h2 style="margin:0">Branding</h2>
+      <button class="btn sm ghost" data-act="wizard">Run setup again</button></div>
+    <form id="brandForm" class="stack" style="margin-top:10px">
+      <div class="form-grid">
+        <label class="field"><span>Organization name (e.g. GHEMS PTA)</span><input type="text" name="org_name" maxlength="120" value="${esc(brandDraft.orgName)}"></label>
+        <label class="field"><span>Contact for questions (email or phone, shown publicly)</span><input type="text" name="contact" maxlength="120" value="${esc(brandDraft.contact)}"></label>
+      </div>
+      <label class="field"><span>About this fundraiser (optional, shown on the public page)</span><textarea name="about_text" maxlength="600">${esc(brandDraft.about)}</textarea></label>
+      <div id="brandEditor"></div>
+      <div class="row"><button class="btn primary" type="submit">Save branding</button>
+        ${brandDirty ? '<span class="small muted">Unsaved changes</span>' : ''}</div>
+    </form></section>`;
+
   // ---- settings
   const field = (k, label, type = 'text', extra = '') =>
     `<label class="field"><span>${label}</span><input type="${type}" name="${k}" value="${esc(cfg[k] ?? '')}" ${extra}></label>`;
@@ -203,6 +238,26 @@ function render() {
       <div><button class="btn primary" type="submit">Save settings</button></div>
       <p class="small muted">Changing the price only affects new sales.</p>
     </form></section>`;
+
+  // ---- passcodes
+  h += `<section class="card"><h2>Passcodes</h2>
+    <p class="small muted">Changing the helper passcode signs out every helper tablet; tell your helpers the new one.
+      Changing yours signs out admins on other devices. At least 6 characters each.</p>
+    <div class="form-grid">
+      <form class="stack" id="pcHelper" autocomplete="off">
+        <strong>Helper passcode</strong>
+        <label class="field"><span>New helper passcode</span><input type="text" name="new" minlength="6" required autocomplete="off"></label>
+        <div><button class="btn" type="submit">Change helper passcode</button></div>
+      </form>
+      <form class="stack" id="pcAdmin" autocomplete="off">
+        <strong>Your admin passcode</strong>
+        <label class="field"><span>Current admin passcode</span><input type="password" name="current" required autocomplete="current-password"></label>
+        <label class="field"><span>New admin passcode</span><input type="password" name="new" minlength="6" required autocomplete="new-password"></label>
+        <label class="field"><span>New admin passcode again</span><input type="password" name="again" minlength="6" required autocomplete="new-password"></label>
+        <div><button class="btn" type="submit">Change admin passcode</button></div>
+      </form>
+    </div>
+  </section>`;
 
   // ---- start over
   h += `<section class="card"><h2>Start a new year</h2>
@@ -239,6 +294,7 @@ function bind() {
       if (a === 'reopen') return act('/admin/board/reopen', { board }, 'Board reopened for sale.');
       if (a === 'delete-board') return confirmDeleteBoard(board);
       if (a === 'download') return downloadSales();
+      if (a === 'wizard') return openWizard();
       if (a === 'toggle-online') {
         const on = data.config.online_open === '1';
         if (on && !confirm('Turn off online sales? Orders already placed stay; nobody new can buy online.')) return;
@@ -270,6 +326,54 @@ function bind() {
       act('/admin/score', { quarter: Number(form.dataset.q), top: form.top.value, side: form.side.value }, 'Score set.');
     }),
   );
+
+  $('#pcHelper').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    if (!confirm('Change the helper passcode? Every helper tablet gets signed out.')) return;
+    try {
+      await api('/admin/passcode', { method: 'POST', body: { role: 'helper', new: f.new.value } });
+      toast('Helper passcode changed. Helpers sign in again with the new one.', 4000);
+      f.reset();
+    } catch (ex) {
+      toast(ex.message, 4000);
+    }
+  });
+  $('#pcAdmin').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    if (f.new.value !== f.again.value) return toast('The two new passcodes don’t match.', 4000);
+    try {
+      const r = await api('/admin/passcode', { method: 'POST', body: { role: 'admin', current: f.current.value, new: f.new.value } });
+      saveSession({ ...session(), token: r.token });
+      toast('Admin passcode changed.', 4000);
+      f.reset();
+    } catch (ex) {
+      toast(ex.message, 4000);
+    }
+  });
+
+  const brandForm = $('#brandForm');
+  brandingEditor($('#brandEditor'), brandDraft, { onChange: () => { brandDirty = true; } });
+  brandForm.addEventListener('input', (e) => {
+    const map = { org_name: 'orgName', contact: 'contact', about_text: 'about' };
+    if (map[e.target.name]) { brandDraft[map[e.target.name]] = e.target.value; brandDirty = true; }
+  });
+  brandForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      await api('/admin/config', { method: 'POST', body: {
+        org_name: brandDraft.orgName, contact: brandDraft.contact, about_text: brandDraft.about,
+        color_main: brandDraft.main, color_accent: brandDraft.accent,
+      } });
+      brandDirty = false;
+      brandDraft = null;
+      toast('Branding saved. Reload other pages to see it.');
+    } catch (ex) {
+      toast(ex.message, 4000);
+    }
+    await load();
+  });
 
   $('#settings').addEventListener('submit', (e) => {
     e.preventDefault();
@@ -461,9 +565,47 @@ function onlineHtml({ config: cfg, orders }) {
   return h + '</section>';
 }
 
+// A brand-new site: claim it with the one-time setup code and pick passcodes.
+function claimSite(container) {
+  return new Promise((resolve) => {
+    container.innerHTML = `
+      <form class="card login stack" autocomplete="off">
+        <h2>Set up your site</h2>
+        <p class="small muted" style="margin:0">Enter the setup code you were given, then choose two passcodes:
+          one for you (admin) and one to share with helpers at the sign-up table.</p>
+        <label class="field"><span>Setup code</span><input type="text" name="code" required autocapitalize="off"></label>
+        <label class="field"><span>Your name</span><input type="text" name="name" required maxlength="40"></label>
+        <label class="field"><span>Your admin passcode (at least 6 characters)</span><input type="password" name="admin_pin" minlength="6" required autocomplete="new-password"></label>
+        <label class="field"><span>Helper passcode (at least 6 characters, different from yours)</span><input type="text" name="helper_pin" minlength="6" required autocomplete="off"></label>
+        <div class="msg error hidden" role="alert"></div>
+        <button class="btn primary big" type="submit">Set up</button>
+      </form>`;
+    const form = container.querySelector('form');
+    const err = form.querySelector('.msg');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      err.classList.add('hidden');
+      try {
+        const s = await api('/setup/claim', {
+          method: 'POST',
+          auth: false,
+          body: { code: form.code.value, name: form.name.value, admin_pin: form.admin_pin.value, helper_pin: form.helper_pin.value },
+        });
+        saveSession(s);
+        resolve(s);
+      } catch (ex) {
+        err.textContent = ex.message;
+        err.classList.remove('hidden');
+      }
+    });
+  });
+}
+
 async function start() {
   let sess = session();
-  if (sess?.role !== 'admin') sess = await signIn($('#app'), { title: 'Admin sign-in', wantAdmin: true });
+  const setup = await api('/setup', { auth: false }).catch(() => ({}));
+  if (setup.needs_setup) sess = await claimSite($('#app'));
+  else if (sess?.role !== 'admin') sess = await signIn($('#app'), { title: 'Admin sign-in', wantAdmin: true });
   $('#who').textContent = sess.name;
   $('#signout').classList.remove('hidden');
   $('#signout').addEventListener('click', () => {
@@ -471,11 +613,13 @@ async function start() {
     location.href = '/';
   });
   await load();
+  if (data?.config?.setup_done !== '1') openWizard();
   // Keep live scores and winners fresh while the page is open, but don't
   // redraw while someone is typing in a form.
   setInterval(() => {
     const a = document.activeElement;
     if (a && ['INPUT', 'TEXTAREA', 'SELECT'].includes(a.tagName)) return;
+    if (brandBusy()) return;
     load().catch(() => {});
   }, 30_000);
 }

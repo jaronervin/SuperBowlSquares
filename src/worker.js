@@ -8,12 +8,14 @@
 
 import { parseEspn, listGames } from './espn.js';
 import { schemaStatements, UPGRADES } from './schema.js';
+import { themeCss, validColor, initials, DEFAULT_MAIN, DEFAULT_ACCENT } from '../public/theme.js';
 
-const PUBLIC_CONFIG = ['title', 'subtitle', 'top_name', 'side_name', 'prize_text'];
+const PUBLIC_CONFIG = ['title', 'subtitle', 'top_name', 'side_name', 'prize_text', 'org_name', 'contact', 'about_text', 'logo_ver'];
 const ADMIN_CONFIG = [
   'title', 'subtitle', 'top_name', 'top_abbr', 'side_name', 'side_abbr', 'game_date',
   'price_cents', 'hold_minutes', 'venmo_user', 'prize_text', 'sales_open',
   'online_open', 'online_max', 'reserve_minutes', 'confirm_hours',
+  'org_name', 'contact', 'about_text', 'color_main', 'color_accent', 'setup_done', 'logo_ver',
 ];
 const NUMERIC_CONFIG = ['price_cents', 'hold_minutes', 'online_max', 'reserve_minutes', 'confirm_hours'];
 const ONLINE_BUYER = 'Online buyer';
@@ -24,8 +26,18 @@ const SCORE_CACHE_MS = 30_000;
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
     try {
+      if (!url.pathname.startsWith('/api/')) {
+        // Pages carry each group's current name, colors and logo, so never let the
+        // browser reuse an old copy ("not modified" answers would skip the branding).
+        const headers = new Headers(request.headers);
+        headers.delete('if-none-match');
+        headers.delete('if-modified-since');
+        const res = await env.ASSETS.fetch(new Request(request, { headers }));
+        if (!(res.headers.get('content-type') || '').includes('text/html')) return res;
+        await ensureSchema(env);
+        return brandPage(res, env, url);
+      }
       await ensureSchema(env);
       return await route(request, env, url);
     } catch (err) {
@@ -71,8 +83,13 @@ async function route(request, env, url) {
   const method = request.method;
 
   await sweepExpired(env);
+  if (method === 'GET' && path === '/logo') return logoImage(env, 'logo');
+  if (method === 'GET' && path === '/icon') return logoImage(env, 'icon');
+  if (method === 'GET' && path === '/manifest') return manifest(env);
   if (method === 'GET' && path === '/public') return publicState(env, url);
   if (method === 'POST' && path === '/login') return login(request, env);
+  if (method === 'GET' && path === '/setup') return setupStatus(env);
+  if (method === 'POST' && path === '/setup/claim') return claimSite(request, env);
 
   // Online buyers: no sign-in.
   if (path.startsWith('/buy/')) {
@@ -113,6 +130,9 @@ async function route(request, env, url) {
   if (method === 'POST' && path === '/admin/sale/void') return voidSale(env, body);
   if (method === 'POST' && path === '/admin/order/confirm') return confirmOrder(env, body);
   if (method === 'POST' && path === '/admin/order/reject') return rejectOrder(env, body);
+  if (method === 'POST' && path === '/admin/passcode') return changePasscode(env, body, session);
+  if (method === 'POST' && path === '/admin/logo') return saveLogo(env, body);
+  if (method === 'POST' && path === '/admin/logo/delete') return deleteLogo(env);
 
   throw new HttpError(404, 'Not found.');
 }
@@ -190,19 +210,63 @@ function int(v, name) {
 }
 
 // ---------------------------------------------------------------- auth
+//
+// Passcodes live hashed in the auth table, so admins can change them from the
+// admin page. Until one is set there, the ADMIN_PIN / HELPER_PIN secrets from
+// Cloudflare are used (how the first site was set up). A brand-new site has
+// neither: its admin claims it with the one-time SETUP_CODE secret and picks
+// both passcodes. Sign-ins carry a per-role version, so changing the helper
+// passcode signs out helpers only, and changing the admin one signs out admins.
 
 const enc = new TextEncoder();
+const MIN_PASSCODE = 6;
 
-async function hmacKey(env) {
-  const material = await crypto.subtle.digest(
-    'SHA-256',
-    enc.encode(`squares|${env.HELPER_PIN}|${env.ADMIN_PIN}`),
-  );
-  return crypto.subtle.importKey('raw', material, { name: 'HMAC', hash: 'SHA-256' }, false, [
+async function authGet(env) {
+  const { results } = await env.DB.prepare('SELECT key, value FROM auth').all();
+  return Object.fromEntries(results.map((r) => [r.key, r.value]));
+}
+
+async function sessionKey(env) {
+  let a = await authGet(env);
+  if (!a.session_key) {
+    const k = b64u(crypto.getRandomValues(new Uint8Array(32)));
+    await env.DB.prepare("INSERT OR IGNORE INTO auth (key, value) VALUES ('session_key', ?)").bind(k).run();
+    a = await authGet(env);
+  }
+  return crypto.subtle.importKey('raw', unb64u(a.session_key), { name: 'HMAC', hash: 'SHA-256' }, false, [
     'sign',
     'verify',
   ]);
 }
+
+async function pbkdf2(pin, salt, iterations) {
+  const key = await crypto.subtle.importKey('raw', enc.encode(String(pin)), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations }, key, 256);
+  return new Uint8Array(bits);
+}
+
+async function hashPasscode(pin) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iterations = 100_000; // the most Workers allow
+  return `pbkdf2$${iterations}$${b64u(salt)}$${b64u(await pbkdf2(pin, salt, iterations))}`;
+}
+
+async function checkPasscode(pin, stored) {
+  const [kind, iter, salt, hash] = String(stored).split('$');
+  if (kind !== 'pbkdf2') return false;
+  const got = await pbkdf2(pin, unb64u(salt), Number(iter));
+  return safeEqual(b64u(got), hash);
+}
+
+// Which role (if any) a typed passcode belongs to.
+async function roleFor(env, a, pin) {
+  if (!pin) return null;
+  if (a.admin_hash ? await checkPasscode(pin, a.admin_hash) : env.ADMIN_PIN && safeEqual(pin, env.ADMIN_PIN)) return 'admin';
+  if (a.helper_hash ? await checkPasscode(pin, a.helper_hash) : env.HELPER_PIN && safeEqual(pin, env.HELPER_PIN)) return 'helper';
+  return null;
+}
+
+const isSetUp = (env, a) => Boolean(a.admin_hash || env.ADMIN_PIN);
 
 const b64u = (buf) =>
   btoa(String.fromCharCode(...new Uint8Array(buf)))
@@ -220,67 +284,128 @@ function safeEqual(a, b) {
   return diff === 0;
 }
 
-async function login(request, env) {
-  if (!env.HELPER_PIN || !env.ADMIN_PIN) {
-    throw new HttpError(500, 'HELPER_PIN and ADMIN_PIN have not been set up yet.');
-  }
+// Slow down guessing: 10 wrong tries from one network locks it out for 15 minutes.
+const FAIL_WINDOW = 15 * 60_000;
+async function guardFailures(env, request) {
   const ip = request.headers.get('cf-connecting-ip') || 'local';
-  const fail = await env.DB.prepare('SELECT count, first_at FROM login_failures WHERE ip = ?')
-    .bind(ip)
-    .first();
-  const windowMs = 15 * 60_000;
-  if (fail && fail.count >= 10 && now() - fail.first_at < windowMs) {
-    throw new HttpError(429, 'Too many wrong passcodes. Wait 15 minutes and try again.');
+  const fail = await env.DB.prepare('SELECT count, first_at FROM login_failures WHERE ip = ?').bind(ip).first();
+  if (fail && fail.count >= 10 && now() - fail.first_at < FAIL_WINDOW) {
+    throw new HttpError(429, 'Too many wrong tries. Wait 15 minutes and try again.');
   }
+  return {
+    async failed() {
+      if (!fail || now() - fail.first_at >= FAIL_WINDOW) {
+        await env.DB.prepare('INSERT OR REPLACE INTO login_failures (ip, count, first_at) VALUES (?, 1, ?)').bind(ip, now()).run();
+      } else {
+        await env.DB.prepare('UPDATE login_failures SET count = count + 1 WHERE ip = ?').bind(ip).run();
+      }
+    },
+    async ok() {
+      if (fail) await env.DB.prepare('DELETE FROM login_failures WHERE ip = ?').bind(ip).run();
+    },
+  };
+}
 
+async function issueToken(env, a, role, name) {
+  const v = Number(a[`${role}_ver`] || 0);
+  const payload = b64u(enc.encode(JSON.stringify({ r: role, n: name, v, e: now() + SESSION_HOURS * 3600_000 })));
+  const sig = b64u(await crypto.subtle.sign('HMAC', await sessionKey(env), enc.encode(payload)));
+  return `${payload}.${sig}`;
+}
+
+async function login(request, env) {
+  const a = await authGet(env);
+  if (!isSetUp(env, a)) throw new HttpError(409, 'This site hasn’t been set up yet.', { needs_setup: true });
+  const guard = await guardFailures(env, request);
   const { pin, name } = await readJson(request);
   const helperName = String(name || '').trim().slice(0, 40);
   if (!helperName) throw new HttpError(400, 'Enter your name.');
-
-  let role = null;
-  if (safeEqual(pin, env.ADMIN_PIN)) role = 'admin';
-  else if (safeEqual(pin, env.HELPER_PIN)) role = 'helper';
-
+  const role = await roleFor(env, a, pin);
   if (!role) {
-    if (!fail || now() - fail.first_at >= windowMs) {
-      await env.DB.prepare(
-        'INSERT OR REPLACE INTO login_failures (ip, count, first_at) VALUES (?, 1, ?)',
-      )
-        .bind(ip, now())
-        .run();
-    } else {
-      await env.DB.prepare('UPDATE login_failures SET count = count + 1 WHERE ip = ?')
-        .bind(ip)
-        .run();
-    }
+    await guard.failed();
     throw new HttpError(401, 'Wrong passcode.');
   }
-  if (fail) await env.DB.prepare('DELETE FROM login_failures WHERE ip = ?').bind(ip).run();
-
-  const payload = b64u(
-    enc.encode(JSON.stringify({ r: role, n: helperName, e: now() + SESSION_HOURS * 3600_000 })),
-  );
-  const sig = b64u(await crypto.subtle.sign('HMAC', await hmacKey(env), enc.encode(payload)));
-  return json({ token: `${payload}.${sig}`, role, name: helperName });
+  await guard.ok();
+  return json({ token: await issueToken(env, a, role, helperName), role, name: helperName });
 }
 
 async function authenticate(request, env) {
   const header = request.headers.get('authorization') || '';
   const token = header.replace(/^Bearer\s+/i, '');
   const [payload, sig] = token.split('.');
-  if (!payload || !sig || !env.HELPER_PIN || !env.ADMIN_PIN) {
-    throw new HttpError(401, 'Please sign in.');
-  }
+  if (!payload || !sig) throw new HttpError(401, 'Please sign in.');
   let ok = false;
   try {
-    ok = await crypto.subtle.verify('HMAC', await hmacKey(env), unb64u(sig), enc.encode(payload));
+    ok = await crypto.subtle.verify('HMAC', await sessionKey(env), unb64u(sig), enc.encode(payload));
   } catch {
     ok = false;
   }
   if (!ok) throw new HttpError(401, 'Please sign in again.');
   const data = JSON.parse(new TextDecoder().decode(unb64u(payload)));
   if (data.e < now()) throw new HttpError(401, 'Your sign-in expired. Please sign in again.');
+  const a = await authGet(env);
+  if (Number(data.v || 0) !== Number(a[`${data.r}_ver`] || 0)) {
+    throw new HttpError(401, 'The passcode changed. Please sign in again.');
+  }
   return { role: data.r, name: data.n };
+}
+
+function validPasscode(pin, label) {
+  const p = String(pin || '');
+  if (p.length < MIN_PASSCODE) throw new HttpError(400, `The ${label} passcode needs at least ${MIN_PASSCODE} characters.`);
+  if (p.length > 100) throw new HttpError(400, `The ${label} passcode is too long.`);
+  return p;
+}
+
+// New site: whether it still needs claiming.
+async function setupStatus(env) {
+  const a = await authGet(env);
+  return json({ needs_setup: !isSetUp(env, a), has_setup_code: Boolean(env.SETUP_CODE) });
+}
+
+// New site: the admin enters the one-time setup code and picks both passcodes.
+async function claimSite(request, env) {
+  const a = await authGet(env);
+  if (isSetUp(env, a)) throw new HttpError(409, 'This site is already set up. Sign in instead.');
+  if (!env.SETUP_CODE) throw new HttpError(409, 'This site has no setup code yet. Ask the person who created it.');
+  const guard = await guardFailures(env, request);
+  const body = await readJson(request);
+  if (!safeEqual(String(body.code || '').trim(), env.SETUP_CODE)) {
+    await guard.failed();
+    throw new HttpError(401, 'That setup code isn’t right.');
+  }
+  const name = String(body.name || '').trim().slice(0, 40);
+  if (!name) throw new HttpError(400, 'Enter your name.');
+  const adminPin = validPasscode(body.admin_pin, 'admin');
+  const helperPin = validPasscode(body.helper_pin, 'helper');
+  if (adminPin === helperPin) throw new HttpError(400, 'Use different passcodes for admins and helpers.');
+  await guard.ok();
+  await env.DB.batch([
+    env.DB.prepare("INSERT OR REPLACE INTO auth (key, value) VALUES ('admin_hash', ?)").bind(await hashPasscode(adminPin)),
+    env.DB.prepare("INSERT OR REPLACE INTO auth (key, value) VALUES ('helper_hash', ?)").bind(await hashPasscode(helperPin)),
+  ]);
+  const fresh = await authGet(env);
+  return json({ token: await issueToken(env, fresh, 'admin', name), role: 'admin', name });
+}
+
+// Admin page: change the admin passcode (needs the current one) or the helper passcode.
+async function changePasscode(env, body, session) {
+  const role = body.role === 'admin' ? 'admin' : body.role === 'helper' ? 'helper' : null;
+  if (!role) throw new HttpError(400, 'Choose which passcode to change.');
+  const a = await authGet(env);
+  if (role === 'admin' && (await roleFor(env, a, body.current)) !== 'admin') {
+    throw new HttpError(401, 'Your current admin passcode isn’t right.');
+  }
+  const pin = validPasscode(body.new, role);
+  const other = await roleFor(env, a, pin);
+  if (other && other !== role) throw new HttpError(400, 'Use different passcodes for admins and helpers.');
+  await env.DB.batch([
+    env.DB.prepare('INSERT OR REPLACE INTO auth (key, value) VALUES (?, ?)').bind(`${role}_hash`, await hashPasscode(pin)),
+    env.DB.prepare('INSERT OR REPLACE INTO auth (key, value) VALUES (?, ?)').bind(`${role}_ver`, String(Number(a[`${role}_ver`] || 0) + 1)),
+  ]);
+  // Changing the admin passcode signs everyone out as admin, including you: hand back a fresh sign-in.
+  const fresh = await authGet(env);
+  return json({ ok: true, token: role === 'admin' ? await issueToken(env, fresh, 'admin', session.name) : null });
 }
 
 // ---------------------------------------------------------------- boards
@@ -351,6 +476,118 @@ async function boardsWithSquares(env, where) {
     drawn_at: b.drawn_at,
     squares: byBoard.get(b.id),
   }));
+}
+
+// ---------------------------------------------------------------- branding
+
+const escHtml = (s) =>
+  String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
+const PAGE_TITLES = { '/buy': 'Buy squares', '/helper': 'Sign-up table', '/admin': 'Admin' };
+
+// Put the group's colors, name and logo into a page on its way out, so it
+// looks right from the first paint and link previews show the right thing.
+async function brandPage(res, env, url) {
+  const cfg = await getConfig(env);
+  const path = url.pathname.replace(/\.html$/, '').replace(/^\/index$/, '/');
+  const title = cfg.title || 'Squares';
+  const pageTitle = PAGE_TITLES[path] ? `${PAGE_TITLES[path]} · ${title}` : title;
+  const hasLogo = Number(cfg.logo_ver) > 0;
+  const logoUrl = `/api/logo?v=${cfg.logo_ver}`;
+  const description = (cfg.about_text || [cfg.org_name, cfg.subtitle].filter(Boolean).join(' · ') || title).replace(/\s+/g, ' ').trim();
+  const head = [
+    `<style id="brand">${themeCss(cfg.color_main || DEFAULT_MAIN, cfg.color_accent || DEFAULT_ACCENT)}</style>`,
+    `<meta property="og:title" content="${escHtml(pageTitle)}">`,
+    `<meta property="og:description" content="${escHtml(description)}">`,
+    hasLogo ? `<meta property="og:image" content="${escHtml(url.origin + logoUrl)}">` : '',
+    `<link rel="icon" href="${hasLogo ? `/api/icon?v=${cfg.logo_ver}` : '/icon-192.png'}">`,
+  ].join('');
+  const badge = hasLogo
+    ? `<img class="brand-logo" src="${logoUrl}" alt="">`
+    : `<span class="brand-logo badge-initials" aria-hidden="true">${escHtml(initials(cfg.org_name || title))}</span>`;
+  const main = validColor(cfg.color_main) ? cfg.color_main : DEFAULT_MAIN;
+  const fresh = new Response(res.body, res);
+  fresh.headers.delete('etag');
+  fresh.headers.delete('last-modified');
+  fresh.headers.set('cache-control', 'no-cache, private');
+  return new HTMLRewriter()
+    .on('title', { element(el) { el.setInnerContent(pageTitle); } })
+    .on('head', { element(el) { el.append(head, { html: true }); } })
+    .on('meta[name="theme-color"]', { element(el) { el.setAttribute('content', main); } })
+    .on('link[rel="apple-touch-icon"]', { element(el) { if (hasLogo) el.setAttribute('href', `/api/icon?v=${cfg.logo_ver}`); } })
+    .on('link[rel="manifest"]', { element(el) { el.setAttribute('href', `/api/manifest?v=${cfg.logo_ver}`); } })
+    .on('header.top .inner', { element(el) { el.prepend(badge, { html: true }); } })
+    .transform(fresh);
+}
+
+async function logoImage(env, name) {
+  const row = await env.DB.prepare('SELECT mime, data FROM assets WHERE name = ?').bind(name).first();
+  if (row) {
+    return new Response(Uint8Array.from(atob(row.data), (c) => c.charCodeAt(0)), {
+      headers: { 'content-type': row.mime, 'cache-control': 'public, max-age=31536000, immutable' },
+    });
+  }
+  // No logo yet: a badge with the group's initials, in their colors.
+  const cfg = await getConfig(env);
+  const text = escHtml(initials(cfg.org_name || cfg.title));
+  const size = text.length > 3 ? 150 : text.length === 3 ? 190 : 230;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="96" fill="${escHtml(cfg.color_main || DEFAULT_MAIN)}"/><text x="256" y="256" dy=".35em" text-anchor="middle" font-family="system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-weight="800" font-size="${size}" fill="${escHtml(cfg.color_accent || DEFAULT_ACCENT)}">${text}</text></svg>`;
+  return new Response(svg, { headers: { 'content-type': 'image/svg+xml', 'cache-control': 'no-cache' } });
+}
+
+async function manifest(env) {
+  const cfg = await getConfig(env);
+  const v = cfg.logo_ver;
+  const icons = Number(v) > 0
+    ? [{ src: `/api/icon?v=${v}`, sizes: '512x512', type: 'image/png' }]
+    : [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png' }, { src: '/icon-512.png', sizes: '512x512', type: 'image/png' }];
+  return new Response(
+    JSON.stringify({
+      name: `${cfg.title || 'Squares'} sign-up`,
+      short_name: (cfg.org_name || 'Squares').slice(0, 12),
+      start_url: '/helper',
+      scope: '/',
+      display: 'standalone',
+      background_color: '#ffffff',
+      theme_color: validColor(cfg.color_main) ? cfg.color_main : DEFAULT_MAIN,
+      icons,
+    }),
+    { headers: { 'content-type': 'application/manifest+json', 'cache-control': 'no-cache' } },
+  );
+}
+
+// The admin page sends the cropped logo and a home-screen icon, both already
+// shrunk to small PNGs in the browser.
+function imageData(dataUrl, label) {
+  const m = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl || ''));
+  if (!m) throw new HttpError(400, `The ${label} must be a PNG, JPEG or WebP image.`);
+  if (m[2].length > 700_000) throw new HttpError(400, `The ${label} is too large. Try a smaller image.`);
+  return { mime: m[1], data: m[2] };
+}
+
+async function saveLogo(env, body) {
+  const logo = imageData(body.logo, 'logo');
+  const icon = imageData(body.icon, 'icon');
+  const put = (name, img) =>
+    env.DB.prepare('INSERT OR REPLACE INTO assets (name, mime, data, updated_at) VALUES (?, ?, ?, ?)').bind(name, img.mime, img.data, now());
+  await env.DB.batch([
+    put('logo', logo),
+    put('icon', icon),
+    // A timestamp, so a re-uploaded logo never reuses a cached older image's address.
+    env.DB.prepare("UPDATE config SET value = ? WHERE key = 'logo_ver'").bind(String(now())),
+    bumpStmt(env),
+  ]);
+  return json({ ok: true });
+}
+
+async function deleteLogo(env) {
+  // logo_ver 0 means "no logo".
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM assets WHERE name IN ('logo', 'icon')"),
+    env.DB.prepare("UPDATE config SET value = '0' WHERE key = 'logo_ver'"),
+    bumpStmt(env),
+  ]);
+  return json({ ok: true });
 }
 
 // ---------------------------------------------------------------- public
@@ -1017,6 +1254,11 @@ async function setConfig(env, body) {
       throw new HttpError(400, 'Game date must look like 2027-02-14.');
     }
     if (k === 'top_abbr' || k === 'side_abbr') value = value.toUpperCase();
+    if ((k === 'color_main' || k === 'color_accent') && !validColor(value)) throw new HttpError(400, 'Colors look like #1d4f91.');
+    if (k === 'setup_done') value = value === '1' || value === 'true' ? '1' : '0';
+    if (k === 'logo_ver') continue; // changes only with the logo itself
+    const max = k === 'about_text' ? 600 : 120;
+    if (value.length > max) throw new HttpError(400, `That's too long (${max} characters at most).`);
     stmts.push(env.DB.prepare('UPDATE config SET value = ? WHERE key = ?').bind(value, k));
   }
   // Changing teams or the date means the cached ESPN result no longer applies.

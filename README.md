@@ -35,12 +35,11 @@ The `home/` folder is a separate, static site: the corkandpin.com front page (`i
 ## One-time setup (Cloudflare dashboard, no terminal needed)
 
 1. In the Cloudflare dashboard, go to **Workers & Pages → Create → Import a repository**. Connect GitHub, pick this repo, and keep the project name **`squares`** (it must match `name` in `wrangler.jsonc`). Leave the build settings as they are and deploy. The first deploy creates the `squares` database by itself; the app creates its tables the first time it runs.
-2. Open the new worker → **Settings → Variables and Secrets** → add two **Secrets**:
-   - `HELPER_PIN`: the passcode helpers type on the tablets
-   - `ADMIN_PIN`: your passcode for the admin page
+2. Open the new worker → **Settings → Variables and Secrets** → add one **Secret**, `SETUP_CODE`, set to any one-time code (e.g. a few random words). Give that code to the group's admin.
+3. The admin opens `/admin`, enters the setup code, and picks their own admin and helper passcodes. The setup wizard then walks them through their name, logo and colors, price, game date, Venmo username and helper passcode. The setup code only works once.
 
-   Use at least 6 characters. After 10 wrong tries from one network, sign-in pauses for 15 minutes. Changing either passcode signs everyone out.
-3. Open the address shown on the worker's page (e.g. `https://squares.<your-subdomain>.workers.dev/admin`), sign in with `ADMIN_PIN`, and fill in Settings.
+   (The first site, GHEMS, was set up with `ADMIN_PIN` / `HELPER_PIN` secrets instead. Those keep working until the passcodes are changed on the admin page, after which the admin page's passcodes take over.)
+4. Open the address shown on the worker's page (e.g. `https://squares.<your-subdomain>.workers.dev/admin`), sign in with `ADMIN_PIN`, and fill in Settings.
 
 Every push to `main` redeploys automatically. To use your own domain, add it under the worker's **Settings → Domains & Routes**.
 
@@ -72,6 +71,8 @@ Then open http://localhost:8787/helper.
 
 - Screens poll for changes (helpers every 2 seconds, public every 15) and only download the board when something changed, which keeps the database well inside the free tier.
 - New boards take the lowest unused number, so a deleted board's number gets reused.
+- **Passcodes** are changed on the admin page (Passcodes section). Changing the helper passcode signs out every helper tablet; changing the admin passcode signs out admins on other devices. They're stored hashed in the database, never in plain text.
+- **Branding** (admin page → Branding, or the setup wizard): organization name, public contact, an "about" blurb, a logo (cropped and shrunk on the phone, optional white-background removal) and two colors, with suggestions taken from the logo. Colors are adjusted automatically where needed so text stays readable. Without a logo, the group's initials show in their colors. Pages are served with the branding already in them, so link previews show the group's name and logo.
 - **Next year:** on the admin page, tap **Download sales** to keep a record, then **Start a new year** (type `START OVER`). That erases boards, sales, refunds, prizes and scores, clears the teams and game date, and opens Board 1. Title, price, hold time, Venmo username, prize line and passcodes stay.
 - **Void** on a sale (admin) puts its squares back on sale. It's for mistakes made before numbers are drawn; refund the buyer yourself.
 - ESPN's scoreboard feed is public but unofficial. If it changes or goes down, type scores in by hand on the admin page.
