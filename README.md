@@ -51,6 +51,7 @@ Then open http://localhost:8787/helper.
 - After changing `app.css`, `common.js` or a page script, bump the `?v=` number on every link and `import` of it (in `public/*.html` and `public/*.js`), so browsers don't keep an old copy.
 
 - Screens poll for changes (helpers every 2 seconds, public every 15) and only download the board when something changed, which keeps the database well inside the free tier.
+- New boards take the lowest unused number. Deleting every board (admin → Delete) starts numbering at Board 1 again, e.g. for next year.
 - **Void** on a sale (admin) puts its squares back on sale. It's for mistakes made before numbers are drawn; refund the buyer yourself.
 - ESPN's scoreboard feed is public but unofficial. If it changes or goes down, type scores in by hand on the admin page.
 

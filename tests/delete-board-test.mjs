@@ -22,3 +22,21 @@ ok((await call('/admin/board/delete',{token:ad,body:{board:1,confirm:'DELETE 1'}
 const a2=(await call('/admin',{token:ad})).data; ok(a2.boards.length===1 && a2.boards[0].status==='open' && a2.sales.length===0,'fresh board opened, no sales left');
 const pub=(await call('/public?full=1')).data; ok(pub.boards.length===1,'public page fine');
 console.log(fails?fails+' FAILED':'ALL PASSED');
+
+// Numbers are reused: lowest free number first.
+{
+  const ad2=(await call('/login',{body:{pin:'admin123',name:'A'}})).data.token;
+  const ids=async()=>(await call('/admin',{token:ad2})).data.boards.map(b=>b.id).join();
+  let cur=(await call('/admin',{token:ad2})).data.boards.map(b=>b.id);
+  for (const id of cur) await call('/admin/board/delete',{token:ad2,body:{board:id,confirm:'DELETE '+id}});
+  ok(await ids()==='1','after deleting everything, numbering restarts at Board 1');
+  await call('/admin/board/new',{token:ad2,body:{}}); await call('/admin/board/new',{token:ad2,body:{}});
+  ok(await ids()==='1,2,3','new boards are 1,2,3');
+  await call('/admin/board/delete',{token:ad2,body:{board:2,confirm:'DELETE 2'}});
+  await call('/admin/board/new',{token:ad2,body:{}});
+  ok(await ids()==='1,2,3','deleted Board 2 number is reused');
+  const st=(await call('/state',{token:ad2})).data; ok(st.boards.find(b=>b.id===2).squares.every(q=>q.s==='open'),'reused Board 2 starts empty');
+  const many=await Promise.all([1,2,3].map(()=>call('/admin/board/new',{token:ad2,body:{}})));
+  ok(many.every(r=>r.status===200) && await ids()==='1,2,3,4,5,6','three boards created at once get 4,5,6');
+  console.log(fails?fails+' FAILED':'ALL PASSED (reuse)');
+}

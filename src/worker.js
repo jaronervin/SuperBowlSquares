@@ -259,13 +259,26 @@ async function authenticate(request, env) {
 
 // ---------------------------------------------------------------- boards
 
+// New boards take the lowest unused number, so numbers start again at 1 once
+// old boards are deleted (e.g. reusing the site next year). The number is
+// picked inside the INSERT itself, so two boards created at once can't clash.
 async function newBoard(env) {
   const created = await env.DB.prepare(
-    "INSERT INTO boards (status, created_at) VALUES ('open', ?) RETURNING id",
+    `INSERT INTO boards (id, status, created_at)
+     SELECT CASE
+       WHEN NOT EXISTS (SELECT 1 FROM boards WHERE id = 1) THEN 1
+       ELSE (SELECT MIN(b.id) + 1 FROM boards b
+             WHERE NOT EXISTS (SELECT 1 FROM boards c WHERE c.id = b.id + 1))
+     END, 'open', ?
+     RETURNING id`,
   )
     .bind(now())
     .first();
   await env.DB.batch([
+    // Clear anything left behind under this number by an older board.
+    env.DB.prepare('DELETE FROM squares WHERE board_id = ?').bind(created.id),
+    env.DB.prepare('DELETE FROM refunds WHERE board_id = ?').bind(created.id),
+    env.DB.prepare('DELETE FROM prizes WHERE board_id = ?').bind(created.id),
     env.DB.prepare(
       `WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i + 1 FROM n WHERE i < 99)
        INSERT INTO squares (board_id, idx) SELECT ?, i FROM n`,
