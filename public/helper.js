@@ -1,4 +1,4 @@
-import { $, esc, api, money, toast, signIn, session, saveSession, boardHtml, sqLabel, fitBoard, onResize } from './common.js?v=13';
+import { $, esc, api, money, toast, signIn, session, saveSession, boardHtml, sqLabel, fitBoard, onResize } from './common.js?v=14';
 
 const CART_KEY = 'squares-cart';
 const METHODS = [
@@ -288,7 +288,12 @@ function openCheckout() {
   const n = holds.length;
   const amount = money(n * cfg.price_cents);
   const labels = holds.map((h) => sqLabel(h.board, h.idx));
-  const memo = `Squares ${labels.join(' ')}`;
+  // e.g. "Squares Board 1: 12, 13, 14; Board 2: 5"
+  const byBoard = new Map();
+  for (const h of [...holds].sort((x, y) => x.board - y.board || x.idx - y.idx)) {
+    byBoard.set(h.board, [...(byBoard.get(h.board) || []), h.idx]);
+  }
+  const memo = `Squares ${[...byBoard].map(([b, idxs]) => `Board ${b}: ${idxs.join(', ')}`).join('; ')}`;
   const user = (cfg.venmo_user || '').trim().replace(/^@/, '');
   showModal(`
     <h2>Take payment</h2>
