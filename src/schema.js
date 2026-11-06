@@ -22,6 +22,10 @@ INSERT OR IGNORE INTO config (key, value) VALUES
   ('venmo_user',     ''),
   ('prize_text',     'Each quarter''s winner on every board gets a gift basket.'),
   ('sales_open',     '1'),
+  ('online_open',    '0'),       -- buyers can pick and reserve squares at /buy
+  ('online_max',     '20'),      -- most squares in one online order
+  ('reserve_minutes','30'),      -- online order must be marked paid within this
+  ('confirm_hours',  '24'),      -- ...then confirmed by the admin within this
   ('version',        '1'),       -- bumped on every change so screens know to refresh
   ('live_cache',     '');        -- last ESPN result (JSON)
 
@@ -61,8 +65,18 @@ CREATE TABLE IF NOT EXISTS sales (
   square_count INTEGER NOT NULL,
   helper       TEXT,
   note         TEXT,
-  created_at   INTEGER NOT NULL
+  created_at   INTEGER NOT NULL,
+  -- confirmed (counts as sold) | reserved (online, not paid yet)
+  -- | pending (online, buyer says paid) | rejected | expired
+  status       TEXT NOT NULL DEFAULT 'confirmed',
+  source       TEXT NOT NULL DEFAULT 'helper',   -- helper | online
+  code         TEXT,                             -- short order code for the Venmo note
+  expires_at   INTEGER,                          -- reserved/pending orders lapse after this
+  paid_at      INTEGER,                          -- when the buyer tapped "I've paid"
+  confirmed_at INTEGER,
+  ip           TEXT                              -- hashed, to limit online orders per person
 );
+CREATE INDEX IF NOT EXISTS sales_status ON sales (status, expires_at);
 
 -- Refunds paid back for squares on boards that didn't fill.
 CREATE TABLE IF NOT EXISTS refunds (
@@ -115,6 +129,20 @@ export function schemaStatements() {
 export const UPGRADES = [
   {
     marker: 'upgrade_game_date_2027',
-    sql: "UPDATE config SET value = '2027-02-14' WHERE key = 'game_date' AND value = ''",
+    sql: ["UPDATE config SET value = '2027-02-14' WHERE key = 'game_date' AND value = ''"],
+  },
+  {
+    marker: 'upgrade_online_orders',
+    sql: [
+      "ALTER TABLE sales ADD COLUMN status TEXT NOT NULL DEFAULT 'confirmed'",
+      "ALTER TABLE sales ADD COLUMN source TEXT NOT NULL DEFAULT 'helper'",
+      'ALTER TABLE sales ADD COLUMN code TEXT',
+      'ALTER TABLE sales ADD COLUMN expires_at INTEGER',
+      'ALTER TABLE sales ADD COLUMN paid_at INTEGER',
+      'ALTER TABLE sales ADD COLUMN confirmed_at INTEGER',
+      'ALTER TABLE sales ADD COLUMN ip TEXT',
+      'CREATE INDEX IF NOT EXISTS sales_status ON sales (status, expires_at)',
+      "INSERT OR IGNORE INTO config (key, value) VALUES ('online_open', '0'), ('online_max', '20'), ('reserve_minutes', '30'), ('confirm_hours', '24')",
+    ],
   },
 ];

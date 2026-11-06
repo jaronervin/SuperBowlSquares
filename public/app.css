@@ -104,6 +104,8 @@ main { max-width: 1100px; margin: 0 auto; padding: 16px; }
   min-height: 44px;
 }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+a.btn { text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
+.amount + .btn, .amount + a.btn { margin-top: 4px; }
 .btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
 .btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
 .btn.ghost { background: transparent; }
@@ -201,6 +203,8 @@ button.sq { cursor: pointer; }
 .sq.open { background: var(--open); }
 .sq.sold { background: var(--sold); color: var(--sold-ink); font-weight: 600; }
 .sq.held { background: var(--held); color: var(--held-ink); }
+/* Online order waiting for payment to be confirmed. */
+.sq.pending { background: repeating-linear-gradient(135deg, var(--held), var(--held) 6px, #f4f6fa 6px, #f4f6fa 12px); color: var(--held-ink); font-style: italic; }
 .sq.mine { background: var(--mine); color: var(--mine-ink); border-color: var(--gold); font-weight: 700; }
 .sq.me { box-shadow: 0 0 0 3px var(--me) inset; }
 .sq.win { background: var(--win); color: var(--win-ink); border-color: var(--win); font-weight: 800; }
@@ -250,6 +254,17 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .login { max-width: 420px; margin: 40px auto; }
 
 @media (max-width: 640px) {
+  /* Order bar fits on one line: smaller pieces, no title/Home while picking. */
+  .top .inner { flex-wrap: nowrap; }
+  .has-cart .top .top-btn { display: none; }
+  .cart-inline { gap: 6px; padding: 3px 3px 3px 10px; flex-wrap: nowrap; }
+  .cart-inline .sum { font-size: 0.9rem; white-space: nowrap; }
+  .cart-inline .timer { font-size: 0.75rem; white-space: nowrap; }
+  .cart-inline .btn { min-height: 36px; padding: 4px 9px; font-size: 0.85rem; white-space: nowrap; }
+  .cart-inline .btn.primary { font-size: 0.9rem; padding: 4px 12px; }
+  /* Small squares: a check mark instead of the word "Picked". */
+  .sq .pick { font-size: 0; }
+  .sq .pick::after { content: '✓'; font-size: 1rem; }
   main { padding: 12px; }
   .card { padding: 12px; }
   .board { grid-template-columns: 16px 20px repeat(10, var(--cw, minmax(0, 1fr))); grid-template-rows: auto 22px repeat(10, var(--ch, 30px)); gap: 2px; }

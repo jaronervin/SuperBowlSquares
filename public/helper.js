@@ -1,4 +1,4 @@
-import { $, esc, api, money, toast, signIn, session, saveSession, boardHtml, sqLabel, fitBoard, onResize } from './common.js?v=15';
+import { $, esc, api, money, toast, signIn, session, saveSession, boardHtml, sqLabel, fitBoard, onResize, payQrHtml } from './common.js?v=17';
 
 const CART_KEY = 'squares-cart';
 const METHODS = [
@@ -130,8 +130,11 @@ function cellFor(board, idx) {
   const isBusy = busy.has(`${board.id}:${idx}`) ? ' busy' : '';
   const expired = (s.s === 'held' || s.s === 'mine') && s.u < serverNow();
   if (s.s === 'sold') return { cls: 'sold', html: `${num}${esc(s.n)}`, title: `${label}: ${s.n}` };
+  if (s.s === 'pending') {
+    return { cls: 'pending', html: `${num}${esc(s.n)}`, title: `${label}: online order by ${s.n}, waiting for payment to be confirmed` };
+  }
   if (s.s === 'mine') {
-    return { cls: `mine${isBusy}`, html: `${num}Picked`, button: true, title: `${label}: in this order` };
+    return { cls: `mine${isBusy}`, html: `${num}<span class="pick">Picked</span>`, button: true, title: `${label}: in this order` };
   }
   if (s.s === 'held' && !expired) {
     return { cls: `held${isBusy}`, html: `${num}${esc(s.n)}`, button: true, title: `${label}: held by ${s.n}` };
@@ -258,27 +261,6 @@ function closeModal() {
   $('#modal').classList.add('hidden');
   $('#modalBody').innerHTML = '';
   renderCart();
-}
-
-// A Venmo link that opens the app to pay this account, with the amount and
-// note filled in. audience=private keeps the payment off Venmo's public feed.
-function venmoLink(user, cents, note) {
-  // encodeURIComponent writes spaces as %20 (not +), which Venmo shows as spaces.
-  const q = { txn: 'pay', audience: 'private', amount: (cents / 100).toFixed(2), note };
-  const qs = Object.entries(q).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
-  return `https://venmo.com/${encodeURIComponent(user)}?${qs}`;
-}
-
-// QR code (as SVG) for the order, or the saved/placeholder image when no
-// Venmo username is set. qrcode() comes from /vendor/qrcode-generator.
-function payQrHtml(user, cents, note) {
-  if (user && typeof qrcode === 'function') {
-    const qr = qrcode(0, 'M');
-    qr.addData(venmoLink(user, cents, note));
-    qr.make();
-    return `<div class="qr" role="img" aria-label="Venmo QR code">${qr.createSvgTag({ cellSize: 4, margin: 3, scalable: true })}</div>`;
-  }
-  return `<img src="/venmo-qr.png" alt="Venmo QR code" onerror="this.onerror=null;this.src='/venmo-qr-placeholder.svg'">`;
 }
 
 function openCheckout() {

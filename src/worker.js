@@ -13,7 +13,10 @@ const PUBLIC_CONFIG = ['title', 'subtitle', 'top_name', 'side_name', 'prize_text
 const ADMIN_CONFIG = [
   'title', 'subtitle', 'top_name', 'top_abbr', 'side_name', 'side_abbr', 'game_date',
   'price_cents', 'hold_minutes', 'venmo_user', 'prize_text', 'sales_open',
+  'online_open', 'online_max', 'reserve_minutes', 'confirm_hours',
 ];
+const NUMERIC_CONFIG = ['price_cents', 'hold_minutes', 'online_max', 'reserve_minutes', 'confirm_hours'];
+const ONLINE_BUYER = 'Online buyer';
 const METHODS = ['venmo', 'cash', 'zelle', 'other'];
 const SESSION_HOURS = 16;
 const SCORE_CACHE_MS = 30_000;
@@ -40,12 +43,17 @@ async function ensureSchema(env) {
   const found = await env.DB.prepare(
     "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'login_failures'",
   ).first();
-  if (!found) await env.DB.batch(schemaStatements().map((q) => env.DB.prepare(q)));
+  const mark = (m) => env.DB.prepare("INSERT OR IGNORE INTO config (key, value) VALUES (?, '1')").bind(m);
+  if (!found) {
+    // A brand-new database already has every upgrade built in.
+    await env.DB.batch([
+      ...schemaStatements().map((q) => env.DB.prepare(q)),
+      ...UPGRADES.map((u) => mark(u.marker)),
+    ]);
+  }
   for (const u of UPGRADES) {
-    const added = await env.DB.prepare("INSERT OR IGNORE INTO config (key, value) VALUES (?, '1')")
-      .bind(u.marker)
-      .run();
-    if (added.meta.changes === 1) await env.DB.prepare(u.sql).run();
+    const added = await mark(u.marker).run();
+    if (added.meta.changes === 1) await env.DB.batch(u.sql.map((q) => env.DB.prepare(q)));
   }
   schemaReady = true;
 }
@@ -62,8 +70,22 @@ async function route(request, env, url) {
   const path = url.pathname.slice(4); // strip "/api"
   const method = request.method;
 
+  await sweepExpired(env);
   if (method === 'GET' && path === '/public') return publicState(env, url);
   if (method === 'POST' && path === '/login') return login(request, env);
+
+  // Online buyers: no sign-in.
+  if (path.startsWith('/buy/')) {
+    if (method === 'GET' && path === '/buy/state') return buyState(env, url);
+    const b = method === 'POST' ? await readJson(request) : null;
+    if (method === 'POST' && path === '/buy/hold') return hold(env, b, { name: ONLINE_BUYER }, true);
+    if (method === 'POST' && path === '/buy/release') return release(env, b);
+    if (method === 'POST' && path === '/buy/extend') return extend(env, b);
+    if (method === 'POST' && path === '/buy/order') return reserveOnline(env, b, request, url);
+    if (method === 'POST' && path === '/buy/paid') return markPaid(env, b);
+    if (method === 'POST' && path === '/buy/cancel') return cancelOnline(env, b);
+    throw new HttpError(404, 'Not found.');
+  }
 
   const session = await authenticate(request, env);
   const body = method === 'POST' ? await readJson(request) : null;
@@ -89,6 +111,8 @@ async function route(request, env, url) {
   if (method === 'POST' && path === '/admin/refresh-scores') return refreshScores(env);
   if (method === 'GET' && path === '/admin/espn-games') return espnGames(env, url);
   if (method === 'POST' && path === '/admin/sale/void') return voidSale(env, body);
+  if (method === 'POST' && path === '/admin/order/confirm') return confirmOrder(env, body);
+  if (method === 'POST' && path === '/admin/order/reject') return rejectOrder(env, body);
 
   throw new HttpError(404, 'Not found.');
 }
@@ -296,7 +320,7 @@ async function ensureOpenBoard(env) {
   if (cfg.sales_open !== '1') return null;
   const row = await env.DB.prepare(
     `SELECT COUNT(*) AS free FROM squares s JOIN boards b ON b.id = s.board_id
-     WHERE b.status = 'open' AND s.status != 'sold'`,
+     WHERE b.status = 'open' AND s.status NOT IN ('sold', 'pending')`,
   ).first();
   if (row.free > 0) return null;
   return newBoard(env);
@@ -310,7 +334,7 @@ async function boardsWithSquares(env, where) {
   const ids = boards.map((b) => b.id);
   const { results: squares } = await env.DB.prepare(
     `SELECT s.board_id, s.idx, s.status, s.hold_cart, s.hold_helper, s.hold_until,
-            sa.buyer_name, sa.token
+            sa.buyer_name, sa.token, sa.status AS sale_status
      FROM squares s LEFT JOIN sales sa ON sa.id = s.sale_id
      WHERE s.board_id IN (${ids.map(() => '?').join(',')})
      ORDER BY s.board_id, s.idx`,
@@ -343,6 +367,8 @@ async function publicState(env, url) {
   const boards = await boardsWithSquares(env, "WHERE status IN ('open', 'drawn', 'refund')");
   let mine = null;
   let meName = null;
+  let order = null;
+  if (me) order = await orderInfo(env, cfg, me);
   if (me) {
     const sale = await env.DB.prepare('SELECT buyer_name FROM sales WHERE token = ?')
       .bind(me)
@@ -370,11 +396,14 @@ async function publicState(env, url) {
       cols: b.cols,
       rows: b.rows,
       drawn_at: b.drawn_at,
-      names: b.squares.map((s) => (s.status === 'sold' ? shortName(s.buyer_name) : null)),
+      names: b.squares.map((s) => (s.status === 'sold' || s.status === 'pending' ? shortName(s.buyer_name) : null)),
+      pending: b.squares.filter((s) => s.status === 'pending').map((s) => s.idx),
     })),
     scores,
     mine,
     meName,
+    order,
+    online: cfg.online_open === '1' && cfg.sales_open === '1' ? { price_cents: Number(cfg.price_cents) } : null,
   });
 }
 
@@ -403,6 +432,7 @@ async function helperState(env, url, session) {
       id: b.id,
       squares: b.squares.map((s) => {
         if (s.status === 'sold') return { s: 'sold', n: shortName(s.buyer_name) };
+        if (s.status === 'pending') return { s: 'pending', n: shortName(s.buyer_name) };
         if (s.status === 'held' && s.hold_until > now()) {
           return s.hold_cart === cart
             ? { s: 'mine', u: s.hold_until }
@@ -420,13 +450,23 @@ function cartId(body) {
   return cart;
 }
 
-async function hold(env, body, session) {
+async function hold(env, body, session, online = false) {
   const cart = cartId(body);
   const board = int(body.board, 'board');
   const idx = int(body.idx, 'square');
   if (idx < 0 || idx > 99) throw new HttpError(400, 'Invalid square.');
   const cfg = await getConfig(env);
   if (cfg.sales_open !== '1') throw new HttpError(409, 'Sales are closed.');
+  if (online) {
+    if (cfg.online_open !== '1') throw new HttpError(409, 'Online sales are closed.');
+    const max = Number(cfg.online_max || 20);
+    const row = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM squares WHERE hold_cart = ? AND status = 'held' AND NOT (board_id = ? AND idx = ?)",
+    )
+      .bind(cart, board, idx)
+      .first();
+    if (row.n >= max) throw new HttpError(409, `Online orders can have up to ${max} squares.`);
+  }
   const t = now();
   const until = t + Number(cfg.hold_minutes || 3) * 60_000;
 
@@ -483,29 +523,18 @@ async function extend(env, body) {
   return json({ ok: true, until, count: res.meta.changes });
 }
 
-async function sell(env, body, session, url) {
-  const cart = cartId(body);
-  const buyerName = String(body.buyer_name || '').trim().slice(0, 60);
-  const contact = String(body.contact || '').trim().slice(0, 80);
-  const method = String(body.method || '');
-  const note = String(body.note || '').trim().slice(0, 200);
-  const expect = Array.isArray(body.expect) ? body.expect : [];
-  if (!buyerName) throw new HttpError(400, "Enter the buyer's name.");
-  if (!contact) throw new HttpError(400, 'Enter a phone number or email so we can reach a winner.');
-  if (!METHODS.includes(method)) throw new HttpError(400, 'Choose how they paid.');
-  if (expect.length === 0) throw new HttpError(400, 'No squares selected.');
-
-  const cfg = await getConfig(env);
-  if (cfg.sales_open !== '1') throw new HttpError(409, 'Sales are closed.');
-
+// Turn the squares a cart holds into an order, all or nothing.
+//   Helper sale: status 'confirmed', squares become 'sold'.
+//   Online order: status 'reserved', squares become 'pending' until confirmed.
+async function placeOrder(env, cfg, o) {
   const { results: held } = await env.DB.prepare(
     "SELECT board_id, idx FROM squares WHERE hold_cart = ? AND status = 'held'",
   )
-    .bind(cart)
+    .bind(o.cart)
     .all();
   const key = (b, i) => `${b}:${i}`;
   const heldSet = new Set(held.map((r) => key(r.board_id, r.idx)));
-  const expectSet = new Set(expect.map(([b, i]) => key(b, i)));
+  const expectSet = new Set(o.expect.map(([b, i]) => key(b, i)));
   const lost = [...expectSet].filter((k) => !heldSet.has(k));
   if (lost.length || heldSet.size !== expectSet.size) {
     throw new HttpError(409, 'Some squares in this order were taken by someone else.', {
@@ -515,28 +544,34 @@ async function sell(env, body, session, url) {
 
   const token = randomToken();
   const unit = Number(cfg.price_cents);
+  const squareStatus = o.status === 'confirmed' ? 'sold' : 'pending';
   const results = await env.DB.batch([
     env.DB.prepare(
-      `INSERT INTO sales (token, buyer_name, contact, method, unit_cents, square_count, helper, note, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).bind(token, buyerName, contact, method, unit, expectSet.size, session.name, note || null, now()),
+      `INSERT INTO sales (token, buyer_name, contact, method, unit_cents, square_count, helper, note,
+                          created_at, status, source, code, expires_at, confirmed_at, ip)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      token, o.buyerName, o.contact, o.method, unit, expectSet.size, o.helper ?? null, o.note || null,
+      now(), o.status, o.source, o.code ?? null, o.expiresAt ?? null,
+      o.status === 'confirmed' ? now() : null, o.ip ?? null,
+    ),
     env.DB.prepare(
-      `UPDATE squares SET status = 'sold', sale_id = (SELECT id FROM sales WHERE token = ?),
+      `UPDATE squares SET status = ?, sale_id = (SELECT id FROM sales WHERE token = ?),
               hold_cart = NULL, hold_helper = NULL, hold_until = NULL
        WHERE hold_cart = ? AND status = 'held'`,
-    ).bind(token, cart),
+    ).bind(squareStatus, token, o.cart),
     bumpStmt(env),
   ]);
 
-  // If another helper grabbed an expired square in the split second between the
-  // check and the update, undo the whole sale rather than charge for fewer squares.
+  // If someone grabbed an expired square in the split second between the
+  // check and the update, undo the whole order rather than charge for fewer squares.
   if (results[1].meta.changes !== expectSet.size) {
     const until = now() + Number(cfg.hold_minutes || 3) * 60_000;
     await env.DB.batch([
       env.DB.prepare(
         `UPDATE squares SET status = 'held', hold_cart = ?, hold_helper = ?, hold_until = ?, sale_id = NULL
          WHERE sale_id = (SELECT id FROM sales WHERE token = ?)`,
-      ).bind(cart, session.name, until, token),
+      ).bind(o.cart, o.helper ?? ONLINE_BUYER, until, token),
       env.DB.prepare('DELETE FROM sales WHERE token = ?').bind(token),
       bumpStmt(env),
     ]);
@@ -544,13 +579,227 @@ async function sell(env, body, session, url) {
   }
 
   await ensureOpenBoard(env);
-  return json({
-    ok: true,
-    token,
-    link: `${url.origin}/?me=${token}`,
-    count: expectSet.size,
-    amount_cents: unit * expectSet.size,
+  return { token, count: expectSet.size, amount_cents: unit * expectSet.size };
+}
+
+function orderFields(body) {
+  const buyerName = String(body.buyer_name || '').trim().slice(0, 60);
+  const contact = String(body.contact || '').trim().slice(0, 80);
+  const expect = Array.isArray(body.expect) ? body.expect : [];
+  if (!buyerName) throw new HttpError(400, 'Enter a first and last name.');
+  if (!contact) throw new HttpError(400, 'Enter a phone number or email so we can reach a winner.');
+  if (expect.length === 0) throw new HttpError(400, 'No squares selected.');
+  return { cart: cartId(body), buyerName, contact, expect };
+}
+
+async function sell(env, body, session, url) {
+  const f = orderFields(body);
+  const method = String(body.method || '');
+  if (!METHODS.includes(method)) throw new HttpError(400, 'Choose how they paid.');
+  const cfg = await getConfig(env);
+  if (cfg.sales_open !== '1') throw new HttpError(409, 'Sales are closed.');
+  const r = await placeOrder(env, cfg, {
+    ...f,
+    method,
+    note: String(body.note || '').trim().slice(0, 200),
+    helper: session.name,
+    status: 'confirmed',
+    source: 'helper',
   });
+  return json({ ok: true, ...r, link: `${url.origin}/?me=${r.token}` });
+}
+
+// ---------------------------------------------------------------- online orders
+
+// Short code for the Venmo note, without look-alike characters (0/O, 1/I/L).
+function orderCode() {
+  const abc = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  return [...crypto.getRandomValues(new Uint8Array(4))].map((b) => abc[b % abc.length]).join('');
+}
+
+async function ipHash(request) {
+  const ip = request.headers.get('cf-connecting-ip') || 'local';
+  const d = await crypto.subtle.digest('SHA-256', enc.encode(`squares-ip|${ip}`));
+  return b64u(d).slice(0, 16);
+}
+
+async function buyState(env, url) {
+  const v = await getVersion(env);
+  if (url.searchParams.get('v') === String(v)) return json({ v, same: true, t: now() });
+  const cart = url.searchParams.get('cart') || '';
+  const cfg = await getConfig(env);
+  const boards = await boardsWithSquares(env, "WHERE status = 'open'");
+  return json({
+    v,
+    t: now(),
+    config: {
+      title: cfg.title,
+      top_name: cfg.top_name,
+      side_name: cfg.side_name,
+      price_cents: Number(cfg.price_cents),
+      hold_minutes: Number(cfg.hold_minutes),
+      online_max: Number(cfg.online_max),
+      reserve_minutes: Number(cfg.reserve_minutes),
+      open: cfg.online_open === '1' && cfg.sales_open === '1',
+    },
+    boards: boards.map((b) => ({
+      id: b.id,
+      squares: b.squares.map((s) => {
+        if (s.status === 'sold' || s.status === 'pending') return { s: 'sold', n: shortName(s.buyer_name) };
+        if (s.status === 'held' && s.hold_until > now()) {
+          return s.hold_cart === cart ? { s: 'mine', u: s.hold_until } : { s: 'held', u: s.hold_until };
+        }
+        return { s: 'open' };
+      }),
+    })),
+  });
+}
+
+async function reserveOnline(env, body, request, url) {
+  const f = orderFields(body);
+  const cfg = await getConfig(env);
+  if (cfg.sales_open !== '1' || cfg.online_open !== '1') throw new HttpError(409, 'Online sales are closed.');
+  if (f.expect.length > Number(cfg.online_max || 20)) {
+    throw new HttpError(409, `Online orders can have up to ${cfg.online_max} squares.`);
+  }
+  // Keep one person from tying up lots of squares without paying.
+  const ip = await ipHash(request);
+  const open = await env.DB.prepare(
+    "SELECT COUNT(*) AS n FROM sales WHERE ip = ? AND status IN ('reserved', 'pending')",
+  )
+    .bind(ip)
+    .first();
+  if (open.n >= 5) {
+    throw new HttpError(429, 'You have several orders waiting already. Pay for those, or wait for them to be confirmed, first.');
+  }
+  let code = orderCode();
+  for (let i = 0; i < 5; i++) {
+    const clash = await env.DB.prepare(
+      "SELECT 1 FROM sales WHERE code = ? AND status IN ('reserved', 'pending', 'confirmed')",
+    )
+      .bind(code)
+      .first();
+    if (!clash) break;
+    code = orderCode();
+  }
+  const r = await placeOrder(env, cfg, {
+    ...f,
+    method: 'venmo',
+    status: 'reserved',
+    source: 'online',
+    code,
+    expiresAt: now() + Number(cfg.reserve_minutes || 30) * 60_000,
+    ip,
+  });
+  return json({ ok: true, ...r, code, link: `${url.origin}/?me=${r.token}` });
+}
+
+// Public view of one order, for the buyer's link.
+async function orderInfo(env, cfg, token) {
+  const o = await env.DB.prepare(
+    `SELECT id, status, source, code, unit_cents, square_count, expires_at, created_at
+     FROM sales WHERE token = ?`,
+  )
+    .bind(token)
+    .first();
+  if (!o || o.source !== 'online') return null;
+  const { results } = await env.DB.prepare(
+    'SELECT board_id, idx FROM squares WHERE sale_id = ? ORDER BY board_id, idx',
+  )
+    .bind(o.id)
+    .all();
+  return {
+    status: o.status,
+    code: o.code,
+    amount_cents: o.unit_cents * o.square_count,
+    count: o.square_count,
+    expires_at: o.expires_at,
+    squares: results.map((r) => [r.board_id, r.idx]),
+    venmo_user: cfg.venmo_user,
+    t: now(),
+  };
+}
+
+async function markPaid(env, body) {
+  const token = String(body?.token || '');
+  const cfg = await getConfig(env);
+  const res = await env.DB.prepare(
+    `UPDATE sales SET status = 'pending', paid_at = ?, expires_at = ?
+     WHERE token = ? AND source = 'online' AND status = 'reserved'`,
+  )
+    .bind(now(), now() + Number(cfg.confirm_hours || 24) * 3600_000, token)
+    .run();
+  if (res.meta.changes !== 1) {
+    const o = await env.DB.prepare('SELECT status FROM sales WHERE token = ?').bind(token).first();
+    if (o?.status === 'pending' || o?.status === 'confirmed') return json({ ok: true });
+    throw new HttpError(409, 'This order is no longer reserved. Its squares may have gone back on sale.');
+  }
+  await bump(env);
+  return json({ ok: true });
+}
+
+// Release an order's squares and close it out with the given status.
+async function closeOrder(env, where, binds, status) {
+  const { results } = await env.DB.prepare(`SELECT id FROM sales WHERE ${where}`)
+    .bind(...binds)
+    .all();
+  if (!results.length) return 0;
+  const ids = results.map((r) => r.id);
+  const marks = ids.map(() => '?').join(',');
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE squares SET status = 'open', sale_id = NULL WHERE sale_id IN (${marks}) AND status = 'pending'`,
+    ).bind(...ids),
+    env.DB.prepare(`UPDATE sales SET status = ? WHERE id IN (${marks})`).bind(status, ...ids),
+    bumpStmt(env),
+  ]);
+  return ids.length;
+}
+
+async function cancelOnline(env, body) {
+  const n = await closeOrder(
+    env,
+    "token = ? AND source = 'online' AND status = 'reserved'",
+    [String(body?.token || '')],
+    'cancelled',
+  );
+  if (!n) throw new HttpError(409, 'Only an order that hasn’t been paid yet can be cancelled here.');
+  return json({ ok: true });
+}
+
+// Reserved/pending orders whose time ran out go back on sale. Runs at most
+// every 15 seconds per worker instance, on any request.
+let lastSweep = 0;
+async function sweepExpired(env) {
+  if (now() - lastSweep < 15_000) return;
+  lastSweep = now();
+  await closeOrder(env, "status IN ('reserved', 'pending') AND expires_at < ?", [now()], 'expired');
+}
+
+async function confirmOrder(env, body) {
+  const id = int(body.sale, 'order');
+  const res = await env.DB.prepare(
+    `UPDATE sales SET status = 'confirmed', confirmed_at = ?, expires_at = NULL
+     WHERE id = ? AND status IN ('reserved', 'pending')`,
+  )
+    .bind(now(), id)
+    .run();
+  if (res.meta.changes !== 1) {
+    throw new HttpError(409, 'That order can’t be confirmed. It may have expired and its squares gone back on sale.');
+  }
+  await env.DB.batch([
+    env.DB.prepare("UPDATE squares SET status = 'sold' WHERE sale_id = ? AND status = 'pending'").bind(id),
+    bumpStmt(env),
+  ]);
+  await ensureOpenBoard(env);
+  return json({ ok: true });
+}
+
+async function rejectOrder(env, body) {
+  const id = int(body.sale, 'order');
+  const n = await closeOrder(env, "id = ? AND status IN ('reserved', 'pending')", [id], 'rejected');
+  if (!n) throw new HttpError(409, 'That order isn’t waiting anymore.');
+  return json({ ok: true });
 }
 
 // ---------------------------------------------------------------- scores
@@ -666,9 +915,15 @@ async function adminState(env) {
   const salesByToken = new Map([...salesById.values()].map((s) => [s.token, s]));
   for (const b of boards) {
     for (const sq of b.squares) {
-      if (sq.status === 'sold') salesByToken.get(sq.token)?.squares.push([b.id, sq.idx]);
+      if (sq.status === 'sold' || sq.status === 'pending') salesByToken.get(sq.token)?.squares.push([b.id, sq.idx]);
     }
   }
+  const confirmed = [...salesById.values()].filter((s) => s.status === 'confirmed');
+  // Online orders: waiting ones first, then the last few that closed without a sale.
+  const waiting = [...salesById.values()].filter((s) => s.status === 'reserved' || s.status === 'pending');
+  const closed = [...salesById.values()]
+    .filter((s) => s.source === 'online' && ['rejected', 'expired', 'cancelled'].includes(s.status))
+    .slice(0, 15);
 
   const refunded = new Set(refunds.map((r) => `${r.sale_id}:${r.board_id}`));
   const refundsOwed = [];
@@ -714,7 +969,8 @@ async function adminState(env) {
   }
 
   const totals = { by_method: {}, collected_cents: 0, squares: 0, refunds_owed_cents: 0, refunded_cents: 0 };
-  for (const s of sales) {
+  totals.waiting_cents = waiting.reduce((a, s) => a + s.unit_cents * s.square_count, 0);
+  for (const s of confirmed) {
     const amt = s.unit_cents * s.square_count;
     totals.collected_cents += amt;
     totals.squares += s.square_count;
@@ -735,8 +991,10 @@ async function adminState(env) {
       drawn_at: b.drawn_at,
       sold: b.squares.filter((s) => s.status === 'sold').length,
       held: b.squares.filter((s) => s.status === 'held' && s.hold_until > now()).length,
+      pending: b.squares.filter((s) => s.status === 'pending').length,
     })),
-    sales: [...salesById.values()],
+    sales: confirmed,
+    orders: { waiting: waiting.reverse(), closed },
     refunds: refundsOwed,
     winners,
     scores,
@@ -750,11 +1008,11 @@ async function setConfig(env, body) {
   for (const [k, v] of Object.entries(body || {})) {
     if (!ADMIN_CONFIG.includes(k)) continue;
     let value = String(v ?? '').trim();
-    if (k === 'price_cents' || k === 'hold_minutes') {
+    if (NUMERIC_CONFIG.includes(k)) {
       const n = Number(value);
       if (!Number.isInteger(n) || n < 1) throw new HttpError(400, `Invalid ${k}.`);
     }
-    if (k === 'sales_open') value = value === '1' || value === 'true' ? '1' : '0';
+    if (k === 'sales_open' || k === 'online_open') value = value === '1' || value === 'true' ? '1' : '0';
     if (k === 'game_date' && value && !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
       throw new HttpError(400, 'Game date must look like 2027-02-14.');
     }
@@ -795,7 +1053,17 @@ async function drawBoard(env, body) {
     .bind(id)
     .first();
   if (sold.n !== 100) {
-    throw new HttpError(409, `Board ${id} has only ${sold.n} of 100 squares sold. Only full boards get numbers.`);
+    const pend = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM squares WHERE board_id = ? AND status = 'pending'",
+    )
+      .bind(id)
+      .first();
+    throw new HttpError(
+      409,
+      pend.n
+        ? `Board ${id} has ${pend.n} online square${pend.n === 1 ? '' : 's'} waiting for payment to be confirmed. Confirm or reject ${pend.n === 1 ? 'it' : 'them'} first.`
+        : `Board ${id} has only ${sold.n} of 100 squares sold. Only full boards get numbers.`,
+    );
   }
   const cols = shuffledDigits();
   const rows = shuffledDigits();

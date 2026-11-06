@@ -8,6 +8,18 @@ Football squares fundraiser. Helpers sign people up in person on tablets; buyers
 
 Runs on Cloudflare Workers with a D1 (SQLite) database, on the free tier.
 
+## Online orders
+
+Turn on **Online sales** on the admin page. The public page then shows a **Buy squares online** button:
+
+1. The buyer picks squares at `/buy` (held for them with the same timer helpers use), enters their name and phone or email, and taps **Reserve and pay**.
+2. Their order page (their personal link) has a **Pay with Venmo** button that opens Venmo with the amount and a note like `Squares B1-12 B1-13 Order K7QP`. They have 30 minutes (adjustable) to pay and tap **I've sent the payment**, or the squares go back on sale.
+3. The order shows under **Online orders** on the admin page. Find the payment in Venmo by its order code, then **Confirm** (squares become theirs) or **Reject** (squares go back on sale). Orders not confirmed within 24 hours (adjustable) go back on sale on their own.
+
+Squares waiting on an online order show striped on every grid and can't be picked. Numbers can't be drawn on a board until every square on it is confirmed. Only confirmed orders count toward money totals. One person (by network) can have at most 5 orders waiting at once.
+
+Email notices (to the organizer when someone pays, and a "you're confirmed" email to the buyer) need a custom domain and aren't set up yet.
+
 ## How the game runs
 
 1. **Selling.** Helpers pick squares on the open board. When a board fills, the next one opens automatically. Admin can also add boards by hand.
@@ -64,4 +76,5 @@ Then open http://localhost:8787/helper.
 
 - `npm test` checks the ESPN score parsing, including an overtime game (no server needed).
 - `tests/api-test.mjs` runs the whole flow against a fresh local server: two helpers fighting over one square, sales, auto-new board, the draw, winners, refunds.
+- `tests/online-test.mjs` covers online orders: reserve, pay, confirm, reject, cancel, and a real 1-minute expiry (takes about 80 seconds). Same setup as above.
 - `tests/delete-board-test.mjs` checks deleting a board (confirmation, sales split across boards, totals). Same setup as above.

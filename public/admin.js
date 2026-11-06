@@ -1,4 +1,4 @@
-import { $, esc, api, money, toast, signIn, session, saveSession, sqLabel } from './common.js?v=15';
+import { $, esc, api, money, toast, signIn, session, saveSession, sqLabel } from './common.js?v=17';
 
 let data = null;
 let saleFilter = '';
@@ -46,9 +46,12 @@ function render() {
       .map(([m, c]) => `<div class="stat"><div class="k">${esc(METHOD_LABEL[m] || m)}</div><div class="v">${money(c)}</div></div>`)
       .join('')}
     <div class="stat"><div class="k">Squares sold</div><div class="v">${totals.squares}</div></div>
+    ${totals.waiting_cents ? `<div class="stat"><div class="k">Online, not confirmed</div><div class="v">${money(totals.waiting_cents)}</div></div>` : ''}
     <div class="stat"><div class="k">Refunds still owed</div><div class="v">${money(totals.refunds_owed_cents)}</div></div>
     <div class="stat"><div class="k">Refunded</div><div class="v">${money(totals.refunded_cents)}</div></div>
   </div></section>`;
+
+  h += onlineHtml(data);
 
   // ---- sales switch + boards
   h += `<section class="card"><div class="row" style="justify-content:space-between">
@@ -73,7 +76,7 @@ function render() {
     actions += ` <button class="btn sm ghost" style="color:var(--danger)" data-act="delete-board" data-board="${b.id}">Delete</button>`;
     h += `<tr>
       <td><strong>${b.id}</strong></td>
-      <td><span class="pill ${b.status}">${status}</span>${b.held ? ` <span class="small muted">${b.held} held</span>` : ''}</td>
+      <td><span class="pill ${b.status}">${status}</span>${b.held ? ` <span class="small muted">${b.held} held</span>` : ''}${b.pending ? ` <span class="small muted">${b.pending} online, not confirmed</span>` : ''}</td>
       <td class="num">${b.sold}/100</td>
       <td class="small">${b.cols ? `${b.cols.join(' ')}<br>${b.rows.join(' ')}<br><span class="muted">${when(b.drawn_at)}</span>` : '<span class="muted">—</span>'}</td>
       <td style="text-align:right">${actions}</td></tr>`;
@@ -166,7 +169,7 @@ function render() {
         <td>${esc(s.contact)}</td>
         <td class="small">${s.squares.map(([b, i]) => sqLabel(b, i)).join(', ')}</td>
         <td class="num">${money(s.unit_cents * s.square_count)}</td>
-        <td>${esc(METHOD_LABEL[s.method] || s.method)}</td>
+        <td>${esc(METHOD_LABEL[s.method] || s.method)}${s.source === 'online' ? `<div class="small muted">online · ${esc(s.code)}</div>` : ''}</td>
         <td class="small">${esc(s.helper || '')}</td>
         <td class="row" style="justify-content:flex-end;flex-wrap:nowrap">
           <a class="btn sm" href="/?me=${esc(s.token)}" target="_blank" rel="noopener">Link</a>
@@ -192,6 +195,9 @@ function render() {
         <label class="field"><span>Price per square ($)</span><input type="number" name="price_dollars" min="1" step="1" value="${Number(cfg.price_cents) / 100}"></label>
         ${field('hold_minutes', 'Minutes a picked square is held', 'number', 'min="1" max="30"')}
         ${field('venmo_user', 'Venmo username, without the @ (makes the pay QR code)')}
+        ${field('online_max', 'Most squares in one online order', 'number', 'min="1" max="100"')}
+        ${field('reserve_minutes', 'Minutes an online buyer has to pay', 'number', 'min="5" max="240"')}
+        ${field('confirm_hours', 'Hours to confirm an online payment before its squares go back on sale', 'number', 'min="1" max="168"')}
       </div>
       ${field('prize_text', 'Prize line on the public page')}
       <div><button class="btn primary" type="submit">Save settings</button></div>
@@ -233,6 +239,16 @@ function bind() {
       if (a === 'reopen') return act('/admin/board/reopen', { board }, 'Board reopened for sale.');
       if (a === 'delete-board') return confirmDeleteBoard(board);
       if (a === 'download') return downloadSales();
+      if (a === 'toggle-online') {
+        const on = data.config.online_open === '1';
+        if (on && !confirm('Turn off online sales? Orders already placed stay; nobody new can buy online.')) return;
+        return act('/admin/config', { online_open: on ? '0' : '1' }, on ? 'Online sales off.' : 'Online sales on.');
+      }
+      if (a === 'confirm-order') return act('/admin/order/confirm', { sale: Number(el.dataset.sale) }, `Order ${el.dataset.code} confirmed.`);
+      if (a === 'reject-order') {
+        if (!confirm(`Reject order ${el.dataset.code}? Its squares go back on sale. If they paid, refund them in Venmo.`)) return;
+        return act('/admin/order/reject', { sale: Number(el.dataset.sale) }, `Order ${el.dataset.code} rejected.`);
+      }
       if (a === 'new-year') return confirmNewYear();
       if (a === 'find-game') return findGame();
       if (a === 'pick-game') return pickGame(Number(el.dataset.i), el.dataset.top);
@@ -397,6 +413,52 @@ function pickGame(i, topSide) {
     { top_name: top.name, top_abbr: top.abbr, side_name: side.name, side_abbr: side.abbr },
     `${top.name} across the top, ${side.name} down the side.`,
   );
+}
+
+// ---- online orders: on/off switch and the orders waiting to be confirmed
+function onlineHtml({ config: cfg, orders }) {
+  const on = cfg.online_open === '1';
+  const STATUS = {
+    reserved: 'Not paid yet',
+    pending: 'Says they paid',
+    rejected: 'Rejected',
+    expired: 'Expired',
+    cancelled: 'Cancelled by buyer',
+  };
+  const row = (o, actions) => `<tr>
+      <td><strong>${esc(o.code)}</strong><div class="small muted">${when(o.created_at)}</div></td>
+      <td><strong>${esc(o.buyer_name)}</strong><div class="small">${esc(o.contact)}</div></td>
+      <td class="small">${o.squares.map(([b, i]) => sqLabel(b, i)).join(', ') || '—'}</td>
+      <td class="num">${money(o.unit_cents * o.square_count)}</td>
+      <td class="small">${STATUS[o.status] || o.status}${o.status === 'pending' ? `<div class="muted">${when(o.paid_at)}</div>` : ''}
+        ${o.expires_at && actions ? `<div class="muted">back on sale ${when(o.expires_at)}</div>` : ''}</td>
+      <td style="text-align:right;white-space:nowrap">${actions || ''}</td></tr>`;
+  const head = '<thead><tr><th>Order</th><th>Buyer</th><th>Squares</th><th class="num">Amount</th><th>Status</th><th></th></tr></thead>';
+  let h = `<section class="card"><div class="row" style="justify-content:space-between">
+      <h2 style="margin:0">Online orders${orders.waiting.length ? ` (${orders.waiting.length} waiting)` : ''}</h2>
+      <div class="row">
+        <span class="pill ${on ? 'open' : 'refund'}">Online sales ${on ? 'on' : 'off'}</span>
+        <button class="btn sm" data-act="toggle-online">${on ? 'Turn off' : 'Turn on'}</button>
+        ${on ? '<a class="btn sm" href="/buy" target="_blank" rel="noopener">Open buy page</a>' : ''}
+      </div></div>`;
+  if (!on && !orders.waiting.length) {
+    h += `<p class="small muted">When on, people can pick squares at the public page's “Buy squares online” button, reserve them, and pay with Venmo.
+      Their squares show as pending until you confirm the payment here.</p>`;
+  }
+  if (orders.waiting.length) {
+    h += `<p class="small muted">Look in Venmo for a payment with the order code in the note. Confirm makes the squares theirs; Reject puts them back on sale.</p>
+      <div class="table-wrap"><table>${head}<tbody>${orders.waiting
+        .map((o) => row(o, `<button class="btn sm primary" data-act="confirm-order" data-sale="${o.id}" data-code="${esc(o.code)}">Confirm</button>
+          <button class="btn sm ghost" style="color:var(--danger)" data-act="reject-order" data-sale="${o.id}" data-code="${esc(o.code)}">Reject</button>`))
+        .join('')}</tbody></table></div>`;
+  } else if (on) {
+    h += `<p class="small muted">No online orders waiting.</p>`;
+  }
+  if (orders.closed.length) {
+    h += `<details style="margin-top:10px"><summary class="small">Recently closed without a sale (${orders.closed.length})</summary>
+      <div class="table-wrap"><table>${head}<tbody>${orders.closed.map((o) => row(o, '')).join('')}</tbody></table></div></details>`;
+  }
+  return h + '</section>';
 }
 
 async function start() {

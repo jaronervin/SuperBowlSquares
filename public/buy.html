@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Buy squares</title>
+  <link rel="stylesheet" href="/app.css?v=17">
+</head>
+<body class="helper buy">
+  <header class="top compact">
+    <div class="inner">
+      <div class="title-block">
+        <h1>Buy squares</h1>
+        <div class="sub" id="sub"></div>
+      </div>
+      <div class="spacer"></div>
+      <div class="cart-inline hidden" id="cartbar">
+        <span class="sum" id="cartSum"></span>
+        <span class="timer" id="cartTimer"></span>
+        <button class="btn ghost" type="button" id="cartClear">Clear</button>
+        <button class="btn primary" type="button" id="cartCheckout">Continue →</button>
+      </div>
+      <a href="/" class="top-btn">Home</a>
+    </div>
+  </header>
+  <main id="app"><p class="muted">Loading…</p></main>
+
+  <div class="modal-bg hidden" id="modal"><div class="modal" id="modalBody" role="dialog" aria-modal="true"></div></div>
+
+  <script type="module" src="/buy.js?v=17"></script>
+</body>
+</html>
