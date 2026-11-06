@@ -20,6 +20,10 @@ Squares waiting on an online order show striped on every grid and can't be picke
 
 Email notices (to the organizer when someone pays, and a "you're confirmed" email to the buyer) need a custom domain and aren't set up yet.
 
+## corkandpin.com front page
+
+The `home/` folder is a separate, static site: the corkandpin.com front page (`index.html`), a privacy page and a 404 page. No code or database. It deploys as its own Cloudflare worker, `corkandpin-home`, with **Root directory** set to `home` in its build settings. Preview locally with `cd home && npx wrangler dev`.
+
 ## How the game runs
 
 1. **Selling.** Helpers pick squares on the open board. When a board fills, the next one opens automatically. Admin can also add boards by hand.

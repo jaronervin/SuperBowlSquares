@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- A push pin, tilted -->
+  <g transform="rotate(35 32 32)">
+    <rect x="30.5" y="34" width="3" height="22" rx="1.5" fill="#8a8f98"/>
+    <path d="M20 30 h24 l-4 -6 h-16 z" fill="#b8352d"/>
+    <rect x="24" y="10" width="16" height="15" rx="3" fill="#d1453b"/>
+    <ellipse cx="32" cy="10" rx="11" ry="4" fill="#e0574c"/>
+    <rect x="27" y="13" width="3" height="9" rx="1.5" fill="#fff" opacity="0.45"/>
+  </g>
+</svg>

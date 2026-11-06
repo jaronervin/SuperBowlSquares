@@ -1,0 +1,12 @@
+{
+  // The corkandpin.com front page: static files only, no code or database.
+  // Deployed as its own Cloudflare worker from this folder (Root directory: home).
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "corkandpin-home",
+  "compatibility_date": "2025-09-01",
+  "assets": {
+    "directory": "./public",
+    "html_handling": "drop-trailing-slash",
+    "not_found_handling": "404-page"
+  }
+}
