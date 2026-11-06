@@ -16,7 +16,7 @@ INSERT OR IGNORE INTO config (key, value) VALUES
   ('top_abbr',       ''),        -- ESPN abbreviation, e.g. KC, for live scores
   ('side_name',      'NFC'),     -- team down the side (rows)
   ('side_abbr',      ''),
-  ('game_date',      ''),        -- YYYY-MM-DD, for live scores
+  ('game_date',      '2027-02-14'), -- YYYY-MM-DD, for live scores (Super Bowl LXI)
   ('price_cents',    '500'),
   ('hold_minutes',   '3'),
   ('venmo_user',     ''),
@@ -108,3 +108,13 @@ export function schemaStatements() {
     .map((s) => s.trim())
     .filter(Boolean);
 }
+
+// One-time changes for databases created by an earlier version. Each runs once:
+// its marker row is inserted first, and the change only applies if that insert
+// was new.
+export const UPGRADES = [
+  {
+    marker: 'upgrade_game_date_2027',
+    sql: "UPDATE config SET value = '2027-02-14' WHERE key = 'game_date' AND value = ''",
+  },
+];

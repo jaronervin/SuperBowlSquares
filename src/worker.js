@@ -7,7 +7,7 @@
 //   admin   – ADMIN_PIN: everything, including money, refunds, number draw.
 
 import { parseEspn } from './espn.js';
-import { schemaStatements } from './schema.js';
+import { schemaStatements, UPGRADES } from './schema.js';
 
 const PUBLIC_CONFIG = ['title', 'subtitle', 'top_name', 'side_name', 'prize_text'];
 const ADMIN_CONFIG = [
@@ -41,6 +41,12 @@ async function ensureSchema(env) {
     "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'login_failures'",
   ).first();
   if (!found) await env.DB.batch(schemaStatements().map((q) => env.DB.prepare(q)));
+  for (const u of UPGRADES) {
+    const added = await env.DB.prepare("INSERT OR IGNORE INTO config (key, value) VALUES (?, '1')")
+      .bind(u.marker)
+      .run();
+    if (added.meta.changes === 1) await env.DB.prepare(u.sql).run();
+  }
   schemaReady = true;
 }
 

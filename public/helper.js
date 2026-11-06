@@ -304,7 +304,7 @@ function updateModalTimer() {
   }
   const left = Math.min(...holds.map((h) => h.until)) - serverNow();
   el.textContent = left > 0 ? `Squares held for ${fmtLeft(left)}` : 'Hold ran out. Tap “More time” before saving.';
-  el.style.color = left < 45_000 ? 'var(--accent)' : '';
+  el.style.color = left < 45_000 ? 'var(--danger)' : '';
 }
 
 function showDone(res, name, contact, labels) {

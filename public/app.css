@@ -1,22 +1,25 @@
 :root {
-  --bg: #f4f1ea;
+  --bg: #f2f5fa;
   --surface: #ffffff;
-  --ink: #1d2433;
-  --muted: #667085;
-  --line: #d9d4c7;
-  --field: #2f6b3a;       /* field green */
-  --field-ink: #ffffff;
-  --accent: #c8102e;      /* scoreboard red */
+  --ink: #14233d;
+  --muted: #5d6b82;
+  --line: #d3dbe8;
+  --brand: #1d4f91;       /* royal blue */
+  --brand-dark: #12305a;  /* navy: header, scoreboard */
+  --gold: #f5b700;
+  --gold-ink: #2b2100;
+  --gold-text: #8a6400;   /* gold dark enough to read as text */
+  --danger: #c62828;
   --open: #ffffff;
-  --mine: #ffd84d;
+  --mine: #fff0b3;
   --mine-ink: #3d2f00;
-  --held: #e6e2d8;
-  --held-ink: #8a8473;
-  --sold: #e9f2ea;
-  --sold-ink: #1f4f29;
-  --win: #c8102e;
-  --win-ink: #ffffff;
-  --me: #3867d6;
+  --held: #e4e8ef;
+  --held-ink: #7a869a;
+  --sold: #e8f0fb;
+  --sold-ink: #12305a;
+  --win: #12305a;
+  --win-ink: #f5b700;
+  --me: #e0a100;
   --radius: 12px;
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.1);
   color-scheme: light;
@@ -31,14 +34,15 @@ body {
   font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 button, input, select, textarea { font: inherit; color: inherit; }
-a { color: var(--field); }
+a { color: var(--brand); }
 h1, h2, h3 { line-height: 1.15; margin: 0; }
 .hidden { display: none !important; }
 
 /* ------------------------------------------------------------ layout */
 .top {
-  background: var(--field);
-  color: var(--field-ink);
+  background: var(--brand-dark);
+  color: #ffffff;
+  border-bottom: 4px solid var(--gold);
   padding: 14px 16px;
 }
 .top .inner { max-width: 1100px; margin: 0 auto; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
@@ -74,8 +78,8 @@ main { max-width: 1100px; margin: 0 auto; padding: 16px; }
   min-height: 44px;
 }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn.primary { background: var(--field); border-color: var(--field); color: #fff; }
-.btn.danger { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+.btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
 .btn.ghost { background: transparent; }
 .btn.big { font-size: 1.15rem; padding: 14px 20px; min-height: 56px; }
 .btn.sm { min-height: 34px; padding: 5px 10px; font-size: 0.875rem; }
@@ -90,18 +94,18 @@ input[type=text], input[type=tel], input[type=email], input[type=password], inpu
   background: #fff;
   min-height: 44px;
 }
-input:focus, select:focus, textarea:focus, .btn:focus-visible { outline: 3px solid rgba(47,107,58,0.35); outline-offset: 1px; }
+input:focus, select:focus, textarea:focus, .btn:focus-visible { outline: 3px solid rgba(29,79,145,0.35); outline-offset: 1px; }
 
 .seg { display: flex; gap: 6px; flex-wrap: wrap; }
 .seg button { flex: 1 1 0; min-width: 90px; }
-.seg button[aria-pressed=true] { background: var(--field); color: #fff; border-color: var(--field); }
+.seg button[aria-pressed=true] { background: var(--brand); color: #fff; border-color: var(--brand); }
 
 .tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 12px; }
 .tabs button {
   border: 1px solid var(--line); background: var(--surface); border-radius: 999px;
   padding: 8px 14px; white-space: nowrap; cursor: pointer; font-weight: 600; min-height: 40px;
 }
-.tabs button[aria-selected=true] { background: var(--ink); color: #fff; border-color: var(--ink); }
+.tabs button[aria-selected=true] { background: var(--brand-dark); color: #fff; border-color: var(--brand-dark); }
 .tabs .count { font-weight: 400; opacity: 0.75; margin-left: 4px; }
 
 .msg { padding: 10px 12px; border-radius: 10px; background: #fff4e5; border: 1px solid #f5c98b; }
@@ -128,21 +132,21 @@ input:focus, select:focus, textarea:focus, .btn:focus-visible { outline: 3px sol
 .board .team-top {
   grid-column: 3 / span 10; grid-row: 1;
   text-align: center; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em;
-  padding: 4px 0; color: var(--field);
+  padding: 4px 0; color: var(--brand);
 }
 .board .team-side {
   grid-column: 1; grid-row: 3 / span 10;
   writing-mode: vertical-rl; transform: rotate(180deg);
   text-align: center; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em;
-  color: var(--accent);
+  color: var(--gold-text);
 }
 .board .digit {
   display: flex; align-items: center; justify-content: center;
   font-weight: 800; font-size: 1.05rem; border-radius: 6px;
   font-variant-numeric: tabular-nums;
 }
-.board .digit.col { background: var(--field); color: #fff; }
-.board .digit.row { background: var(--accent); color: #fff; }
+.board .digit.col { background: var(--brand); color: #fff; }
+.board .digit.row { background: var(--gold); color: var(--gold-ink); }
 .board .digit.blank { background: transparent; color: var(--muted); }
 .board .digit.hit { box-shadow: 0 0 0 3px var(--ink) inset; }
 
@@ -163,34 +167,35 @@ button.sq { cursor: pointer; }
 .sq.open { background: var(--open); }
 .sq.sold { background: var(--sold); color: var(--sold-ink); font-weight: 600; }
 .sq.held { background: var(--held); color: var(--held-ink); }
-.sq.mine { background: var(--mine); color: var(--mine-ink); border-color: #e0b400; font-weight: 700; }
+.sq.mine { background: var(--mine); color: var(--mine-ink); border-color: var(--gold); font-weight: 700; }
 .sq.me { box-shadow: 0 0 0 3px var(--me) inset; }
 .sq.win { background: var(--win); color: var(--win-ink); border-color: var(--win); font-weight: 800; }
 .sq .badges { position: absolute; right: 2px; bottom: 2px; display: flex; gap: 2px; }
-.sq .badge { background: #fff; color: var(--win); border-radius: 4px; font-size: 0.6rem; font-weight: 800; padding: 0 3px; }
+.sq .badge { background: var(--gold); color: var(--gold-ink); border-radius: 4px; font-size: 0.6rem; font-weight: 800; padding: 0 3px; }
 .sq.busy { opacity: 0.5; }
 
 /* ------------------------------------------------------------ scores */
 .scores { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-.qbox { background: var(--ink); color: #fff; border-radius: 10px; padding: 8px 10px; text-align: center; }
+.qbox { background: var(--brand-dark); color: #fff; border-radius: 10px; padding: 8px 10px; text-align: center; }
 .qbox .q { font-size: 0.75rem; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.08em; }
 .qbox .s { font-size: 1.3rem; font-weight: 800; font-variant-numeric: tabular-nums; }
-.qbox.pending { background: #3a4152; }
+.qbox.pending { background: #3b5070; }
 .qbox.pending .s { opacity: 0.5; }
 .live { margin-top: 8px; font-size: 0.9rem; }
 
 /* ------------------------------------------------------------ helper cart bar */
 .cartbar {
   position: sticky; bottom: 0; z-index: 20;
-  background: var(--ink); color: #fff;
+  background: var(--brand-dark); color: #fff;
   padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
 }
 .cartbar .inner { max-width: 1100px; margin: 0 auto; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .cartbar .sum { font-weight: 700; font-size: 1.1rem; }
 .cartbar .timer { font-variant-numeric: tabular-nums; opacity: 0.85; }
-.cartbar .timer.low { color: #ffb4b4; opacity: 1; font-weight: 700; }
+.cartbar .timer.low { color: var(--gold); opacity: 1; font-weight: 700; }
 .cartbar .spacer { flex: 1; }
 .cartbar .btn.ghost { color: #fff; border-color: rgba(255,255,255,0.35); }
+.cartbar .btn.primary { background: var(--gold); border-color: var(--gold); color: var(--gold-ink); }
 
 /* ------------------------------------------------------------ modal */
 .modal-bg {
@@ -217,7 +222,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .stat .k { font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
 .stat .v { font-size: 1.5rem; font-weight: 800; font-variant-numeric: tabular-nums; }
 .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 0.8rem; font-weight: 700; background: var(--bg); }
-.pill.open { background: #e6f0ff; color: #1d4ed8; }
+.pill.open { background: #e6eefc; color: var(--brand); }
 .pill.drawn { background: var(--sold); color: var(--sold-ink); }
 .pill.refund { background: #fdecec; color: #a11; }
 .login { max-width: 420px; margin: 40px auto; }
