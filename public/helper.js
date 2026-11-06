@@ -1,4 +1,4 @@
-import { $, esc, api, money, toast, signIn, session, saveSession, boardHtml, sqLabel } from './common.js';
+import { $, esc, api, money, toast, signIn, session, saveSession, boardHtml, sqLabel, fitBoard, onResize } from './common.js';
 
 const CART_KEY = 'squares-cart';
 const METHODS = [
@@ -101,8 +101,13 @@ function render() {
     cell: (idx) => cellFor(board, idx),
   })}</div></div>`;
   app.innerHTML = html;
+  fitHelperBoard();
   renderCart();
 }
+
+// Keep room for the sticky order bar at the bottom.
+const fitHelperBoard = () => fitBoard($('#app .board'), { bottom: 96, minShare: 0.35 });
+onResize(fitHelperBoard);
 
 function cellFor(board, idx) {
   const s = board.squares[idx];
@@ -347,7 +352,8 @@ function signOut() {
 }
 $('#signout').addEventListener('click', async () => {
   await api('/release', { method: 'POST', body: { cart } }).catch(() => {});
-  signOut();
+  saveSession(null);
+  location.href = '/';
 });
 
 async function start() {

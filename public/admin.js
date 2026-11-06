@@ -256,7 +256,7 @@ async function start() {
   $('#signout').classList.remove('hidden');
   $('#signout').addEventListener('click', () => {
     saveSession(null);
-    location.reload();
+    location.href = '/';
   });
   await load();
   // Keep live scores and winners fresh while the page is open, but don't

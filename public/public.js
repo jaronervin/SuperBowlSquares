@@ -1,4 +1,4 @@
-import { $, esc, api, boardHtml, winningIdx, scoresHtml, sqLabel } from './common.js';
+import { $, esc, api, boardHtml, winningIdx, scoresHtml, sqLabel, fitBoard, onResize } from './common.js';
 
 const params = new URLSearchParams(location.search);
 const me = params.get('me');
@@ -91,7 +91,10 @@ function render() {
       };
     },
   });
+  fitBoard($('#board .board'));
 }
+
+onResize(() => fitBoard($('#board .board')));
 
 $('#tabs').addEventListener('click', (e) => {
   const b = e.target.closest('[data-board]');

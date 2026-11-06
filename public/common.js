@@ -89,6 +89,7 @@ export function signIn(container, { title, wantAdmin }) {
         </label>
         <div class="msg error hidden" role="alert"></div>
         <button class="btn primary big" type="submit">Sign in</button>
+        <p class="small" style="text-align:center;margin:0"><a href="/">← Back to home</a></p>
       </form>`;
     const form = container.querySelector('form');
     const err = form.querySelector('.msg');
@@ -141,6 +142,35 @@ export function boardHtml({ topName, sideName, cols, rows, cell }) {
     }
   }
   return html + `</div>`;
+}
+
+/**
+ * Shrink a board until all of it fits in the window, so nobody has to scroll
+ * to see the whole grid. `bottom` is space to keep free under it (e.g. a
+ * sticky bar). If the board starts low on the page, it's sized to fit the
+ * full window instead, so it fits once scrolled to.
+ */
+export function fitBoard(board, { bottom = 16, minShare = 0.6 } = {}) {
+  if (!board) return;
+  board.style.maxWidth = '';
+  const vh = window.innerHeight;
+  const top = board.getBoundingClientRect().top + window.scrollY;
+  let avail = vh - top - bottom;
+  if (avail < vh * minShare) avail = vh - bottom - 16;
+  for (let i = 0; i < 4; i++) {
+    const h = board.offsetHeight;
+    const w = board.offsetWidth;
+    if (h <= avail || w < 240) break;
+    board.style.maxWidth = `${Math.max(240, Math.floor((w * avail) / h))}px`;
+  }
+}
+
+export function onResize(fn) {
+  let t;
+  window.addEventListener('resize', () => {
+    clearTimeout(t);
+    t = setTimeout(fn, 100);
+  });
 }
 
 // Winning square for a finished quarter on a drawn board.
