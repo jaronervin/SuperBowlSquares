@@ -145,24 +145,36 @@ export function boardHtml({ topName, sideName, cols, rows, cell }) {
 }
 
 /**
- * Shrink a board until all of it fits in the window, so nobody has to scroll
- * to see the whole grid. `bottom` is space to keep free under it (e.g. a
- * sticky bar). If the board starts low on the page, it's sized to fit the
- * full window instead, so it fits once scrolled to.
+ * Size a board's squares so all of it fits in the window, so nobody has to
+ * scroll to see the whole grid. Sizes are set in pixels (--cw/--ch) rather
+ * than measured after the fact, which behaves the same in every browser.
+ * `bottom` is space to keep free under it (e.g. a sticky bar). If the board
+ * starts low on the page, it's sized to fit the full window instead, so it
+ * fits once scrolled to.
  */
 export function fitBoard(board, { bottom = 16, minShare = 0.6 } = {}) {
   if (!board) return;
-  board.style.maxWidth = '';
+  const cs = getComputedStyle(board);
+  const ratio = parseFloat(cs.getPropertyValue('--ratio')) || 1.25;
+  const gap = parseFloat(cs.columnGap) || 0;
+  const first = board.querySelector('.sq');
+  if (!first) return;
+  // Space taken by the team name and digit labels (left of and above square 0).
+  // (Measured from the team labels, since the grid is centered in the board.)
+  const labelW = first.offsetLeft - board.querySelector('.team-side').offsetLeft;
+  const labelH = first.offsetTop - board.querySelector('.team-top').offsetTop;
+  const availW = board.clientWidth;
+
   const vh = window.innerHeight;
   const top = board.getBoundingClientRect().top + window.scrollY;
-  let avail = vh - top - bottom;
-  if (avail < vh * minShare) avail = vh - bottom - 16;
-  for (let i = 0; i < 4; i++) {
-    const h = board.offsetHeight;
-    const w = board.offsetWidth;
-    if (h <= avail || w < 240) break;
-    board.style.maxWidth = `${Math.max(240, Math.floor((w * avail) / h))}px`;
-  }
+  let availH = vh - top - bottom;
+  if (availH < vh * minShare) availH = vh - bottom - 16;
+
+  const byWidth = (availW - labelW - 9 * gap) / 10;
+  const byHeight = ((availH - labelH - 9 * gap) / 10) * ratio;
+  const cw = Math.max(26, Math.floor(Math.min(byWidth, byHeight)));
+  board.style.setProperty('--cw', `${cw}px`);
+  board.style.setProperty('--ch', `${Math.floor(cw / ratio)}px`);
 }
 
 export function onResize(fn) {

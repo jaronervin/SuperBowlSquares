@@ -125,13 +125,16 @@ input:focus, select:focus, textarea:focus, .btn:focus-visible { outline: 3px sol
 /* ------------------------------------------------------------ the grid */
 .board-wrap { overflow-x: auto; }
 .board {
-  --cell: minmax(0, 1fr);
+  /* fitBoard() sets --cw/--ch (square width/height in px) to fit the screen. */
+  --ratio: 1.25;
+  position: relative;
   display: grid;
-  grid-template-columns: 28px 30px repeat(10, var(--cell));
-  grid-template-rows: auto 30px repeat(10, auto);
+  grid-template-columns: 28px 30px repeat(10, var(--cw, minmax(0, 1fr)));
+  grid-template-rows: auto 30px repeat(10, var(--ch, 48px));
+  justify-content: center;
   gap: 3px;
-  margin-inline: auto;  /* fitBoard() narrows it so all 100 squares fit on screen */
   user-select: none;
+  -webkit-user-select: none;
 }
 .board .team-top {
   grid-column: 3 / span 10; grid-row: 1;
@@ -156,7 +159,13 @@ input:focus, select:focus, textarea:focus, .btn:focus-visible { outline: 3px sol
 
 .sq {
   position: relative;
-  aspect-ratio: 1.25 / 1;
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+  min-width: 0;
+  font-family: inherit;
+  color: inherit;
+  -webkit-tap-highlight-color: transparent;
   border: 1px solid var(--line);
   background: var(--open);
   border-radius: 6px;
@@ -234,10 +243,10 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 @media (max-width: 640px) {
   main { padding: 12px; }
   .card { padding: 12px; }
-  .board { min-width: 0; grid-template-columns: 16px 20px repeat(10, minmax(0, 1fr)); grid-template-rows: auto 22px repeat(10, auto); gap: 2px; }
+  .board { --ratio: 1; grid-template-columns: 16px 20px repeat(10, var(--cw, minmax(0, 1fr))); grid-template-rows: auto 22px repeat(10, var(--ch, 30px)); gap: 2px; }
   .board .digit { font-size: 0.85rem; border-radius: 4px; }
   .board .team-top, .board .team-side { font-size: 0.75rem; }
-  .sq { aspect-ratio: 1 / 1; font-size: 0.5rem; padding: 1px; border-radius: 4px; }
+  .sq { font-size: 0.5rem; padding: 1px; border-radius: 4px; }
   .sq .num { display: none; }
   .sq .badge { font-size: 0.5rem; padding: 0 2px; }
   .pay { grid-template-columns: 1fr; }
