@@ -34,7 +34,11 @@ On each tablet, open `/helper` and use **Share → Add to Home Screen**. The ico
 
 ## Venmo QR code
 
-In the Venmo app, open your QR code and save it as an image. Add it to this repo as `public/venmo-qr.png` (or send it to Claude to add); the site redeploys on its own. Until then the checkout screen shows a placeholder. Also set your Venmo username in admin Settings.
+Set your Venmo username on the admin page (Settings). The payment screen then shows a QR code made for that order: scanning it with a phone camera opens Venmo to pay you, with the amount and the squares (e.g. "Squares B1-12 B1-13") already filled in. Test it once with your own phone before the event.
+
+Without a username, the payment screen shows `public/venmo-qr.png` if you add one, or a placeholder.
+
+QR codes are drawn by [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) (MIT license), saved in `public/vendor/`.
 
 ## Running locally
 

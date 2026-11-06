@@ -1,4 +1,4 @@
-import { $, esc, api, boardHtml, winningIdx, scoresHtml, sqLabel, fitBoard, onResize } from './common.js?v=12';
+import { $, esc, api, boardHtml, winningIdx, scoresHtml, sqLabel, fitBoard, onResize } from './common.js?v=13';
 
 const params = new URLSearchParams(location.search);
 const me = params.get('me');

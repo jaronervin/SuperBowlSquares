@@ -225,6 +225,8 @@ button.sq { cursor: pointer; }
 .modal { background: var(--surface); border-radius: 16px; width: 100%; max-width: 720px; padding: 20px; margin: auto 0; }
 .modal h2 { font-size: 1.3rem; margin-bottom: 4px; }
 .pay { display: grid; grid-template-columns: 200px 1fr; gap: 16px; align-items: center; }
+.pay .qr { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 4px; }
+.pay .qr svg { display: block; width: 100%; height: auto; }
 .pay img { width: 100%; border-radius: 10px; border: 1px solid var(--line); background: #fff; }
 .amount { font-size: 2.4rem; font-weight: 800; font-variant-numeric: tabular-nums; }
 .memo { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--bg); padding: 4px 8px; border-radius: 6px; display: inline-block; }
@@ -257,7 +259,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .sq .num { display: none; }
   .sq .badge { font-size: 0.5rem; padding: 0 2px; }
   .pay { grid-template-columns: 1fr; }
-  .pay img { max-width: 220px; margin: 0 auto; display: block; }
+  .pay img, .pay .qr { max-width: 220px; margin: 0 auto; display: block; }
   .form-grid { grid-template-columns: 1fr; }
   .scores { grid-template-columns: repeat(2, 1fr); }
   .amount { font-size: 2rem; }

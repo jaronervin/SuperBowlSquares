@@ -1,4 +1,4 @@
-import { $, esc, api, money, toast, signIn, session, saveSession, boardHtml, sqLabel, fitBoard, onResize } from './common.js?v=12';
+import { $, esc, api, money, toast, signIn, session, saveSession, boardHtml, sqLabel, fitBoard, onResize } from './common.js?v=13';
 
 const CART_KEY = 'squares-cart';
 const METHODS = [
@@ -260,6 +260,27 @@ function closeModal() {
   renderCart();
 }
 
+// A Venmo link that opens the app to pay this account, with the amount and
+// note filled in. audience=private keeps the payment off Venmo's public feed.
+function venmoLink(user, cents, note) {
+  // encodeURIComponent writes spaces as %20 (not +), which Venmo shows as spaces.
+  const q = { txn: 'pay', audience: 'private', amount: (cents / 100).toFixed(2), note };
+  const qs = Object.entries(q).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
+  return `https://venmo.com/${encodeURIComponent(user)}?${qs}`;
+}
+
+// QR code (as SVG) for the order, or the saved/placeholder image when no
+// Venmo username is set. qrcode() comes from /vendor/qrcode-generator.
+function payQrHtml(user, cents, note) {
+  if (user && typeof qrcode === 'function') {
+    const qr = qrcode(0, 'M');
+    qr.addData(venmoLink(user, cents, note));
+    qr.make();
+    return `<div class="qr" role="img" aria-label="Venmo QR code">${qr.createSvgTag({ cellSize: 4, margin: 3, scalable: true })}</div>`;
+  }
+  return `<img src="/venmo-qr.png" alt="Venmo QR code" onerror="this.onerror=null;this.src='/venmo-qr-placeholder.svg'">`;
+}
+
 function openCheckout() {
   const holds = myHolds();
   if (!holds.length) return;
@@ -268,15 +289,17 @@ function openCheckout() {
   const amount = money(n * cfg.price_cents);
   const labels = holds.map((h) => sqLabel(h.board, h.idx));
   const memo = `Squares ${labels.join(' ')}`;
+  const user = (cfg.venmo_user || '').trim().replace(/^@/, '');
   showModal(`
     <h2>Take payment</h2>
     <p class="muted" style="margin-top:0">${n} square${n === 1 ? '' : 's'}: ${esc(labels.join(', '))}</p>
     <div class="pay">
-      <img src="/venmo-qr.png" alt="Venmo QR code" onerror="this.onerror=null;this.src='/venmo-qr-placeholder.svg'">
+      ${payQrHtml(user, n * cfg.price_cents, memo)}
       <div class="stack">
         <div class="amount">${amount}</div>
-        ${cfg.venmo_user ? `<div>Venmo <strong>@${esc(cfg.venmo_user.replace(/^@/, ''))}</strong></div>` : ''}
-        <div class="small">Have them put this in the Venmo note:<br><span class="memo">${esc(memo)}</span></div>
+        ${user ? `<div>Venmo <strong>@${esc(user)}</strong></div>
+        <div class="small">They scan the code with their phone camera. Venmo opens with ${amount} and this note filled in:<br><span class="memo">${esc(memo)}</span></div>`
+        : `<div class="small">Have them put this in the Venmo note:<br><span class="memo">${esc(memo)}</span></div>`}
         <div class="small muted" id="modalTimer"></div>
         <div><button class="btn sm" type="button" id="more">+ More time</button></div>
       </div>

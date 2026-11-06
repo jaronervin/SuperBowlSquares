@@ -1,4 +1,4 @@
-import { $, esc, api, money, toast, signIn, session, saveSession, sqLabel } from './common.js?v=12';
+import { $, esc, api, money, toast, signIn, session, saveSession, sqLabel } from './common.js?v=13';
 
 let data = null;
 let saleFilter = '';
@@ -191,7 +191,7 @@ function render() {
         ${field('game_date', 'Game date (for live scores)', 'date')}
         <label class="field"><span>Price per square ($)</span><input type="number" name="price_dollars" min="1" step="1" value="${Number(cfg.price_cents) / 100}"></label>
         ${field('hold_minutes', 'Minutes a picked square is held', 'number', 'min="1" max="30"')}
-        ${field('venmo_user', 'Venmo username (shown at checkout)')}
+        ${field('venmo_user', 'Venmo username, without the @ (makes the pay QR code)')}
       </div>
       ${field('prize_text', 'Prize line on the public page')}
       <div><button class="btn primary" type="submit">Save settings</button></div>
