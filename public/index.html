@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Squares</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <header class="top">
+    <div class="inner">
+      <div>
+        <h1 id="title">Squares</h1>
+        <div class="sub" id="subtitle"></div>
+      </div>
+    </div>
+  </header>
+  <main>
+    <div id="hello" class="card hidden"></div>
+    <section class="card">
+      <h2>Score by quarter</h2>
+      <div id="scores" class="muted">Loading…</div>
+      <p class="small muted" id="how"></p>
+    </section>
+    <section class="card">
+      <div class="tabs" id="tabs" role="tablist"></div>
+      <div id="boardInfo" class="small muted" style="margin-bottom:8px"></div>
+      <div class="board-wrap" id="board"></div>
+    </section>
+    <p class="small muted" id="prize"></p>
+  </main>
+  <script type="module" src="/public.js"></script>
+</body>
+</html>

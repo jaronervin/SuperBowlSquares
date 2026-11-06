@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Squares sign-up</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <header class="top">
+    <div class="inner">
+      <div>
+        <h1>Sign-up table</h1>
+        <div class="sub" id="sub">Helpers only</div>
+      </div>
+      <div class="spacer"></div>
+      <span class="who" id="who"></span>
+      <button type="button" id="signout" class="hidden">Sign out</button>
+    </div>
+  </header>
+  <main id="app"></main>
+
+  <div class="cartbar hidden" id="cartbar">
+    <div class="inner">
+      <span class="sum" id="cartSum"></span>
+      <span class="timer" id="cartTimer"></span>
+      <span class="spacer"></span>
+      <button class="btn ghost" type="button" id="cartClear">Clear</button>
+      <button class="btn primary big" type="button" id="cartCheckout">Take payment →</button>
+    </div>
+  </div>
+
+  <div class="modal-bg hidden" id="modal"><div class="modal" id="modalBody" role="dialog" aria-modal="true"></div></div>
+
+  <script type="module" src="/helper.js"></script>
+</body>
+</html>

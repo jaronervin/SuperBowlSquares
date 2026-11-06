@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "squares",
+  "main": "src/worker.js",
+  "compatibility_date": "2025-09-01",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "squares",
+      // Replace with the id printed by `npx wrangler d1 create squares`
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ]
+  // Secrets (set with `npx wrangler secret put NAME`, never committed):
+  //   HELPER_PIN  passcode helpers type on the tablets
+  //   ADMIN_PIN   passcode for the admin screen (keep this one to yourself)
+}
