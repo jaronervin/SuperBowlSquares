@@ -82,6 +82,7 @@ async function route(request, env, url) {
   if (method === 'POST' && path === '/admin/board/refund') return refundBoard(env, body);
   if (method === 'POST' && path === '/admin/board/reopen') return reopenBoard(env, body);
   if (method === 'POST' && path === '/admin/board/delete') return deleteBoard(env, body);
+  if (method === 'POST' && path === '/admin/new-year') return startNewYear(env, body);
   if (method === 'POST' && path === '/admin/refund') return markRefund(env, body);
   if (method === 'POST' && path === '/admin/prize') return markPrize(env, body);
   if (method === 'POST' && path === '/admin/score') return setScore(env, body);
@@ -796,6 +797,34 @@ async function refundBoard(env, body) {
 
 // Permanently remove a board, its squares, and the sales (or the part of a
 // sale) on it. The caller must send confirm: "DELETE <id>", typed by the admin.
+// Wipe the game for next year: all boards, sales, refunds, prizes and scores.
+// Teams and game date are cleared (next year's aren't known yet); the title,
+// price, hold time, Venmo username and prize line stay. Requires the admin to
+// type START OVER.
+async function startNewYear(env, body) {
+  if (String(body.confirm || '').trim().toUpperCase() !== 'START OVER') {
+    throw new HttpError(400, 'To start a new year, type START OVER exactly.');
+  }
+  const set = (k, v) => env.DB.prepare('UPDATE config SET value = ? WHERE key = ?').bind(v, k);
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM squares'),
+    env.DB.prepare('DELETE FROM sales'),
+    env.DB.prepare('DELETE FROM refunds'),
+    env.DB.prepare('DELETE FROM prizes'),
+    env.DB.prepare('DELETE FROM score_overrides'),
+    env.DB.prepare('DELETE FROM boards'),
+    set('top_name', 'AFC'),
+    set('top_abbr', ''),
+    set('side_name', 'NFC'),
+    set('side_abbr', ''),
+    set('game_date', ''),
+    set('live_cache', ''),
+    set('sales_open', '1'),
+  ]);
+  await newBoard(env); // Board 1, and bumps the version so every screen refreshes
+  return json({ ok: true });
+}
+
 async function deleteBoard(env, body) {
   const id = int(body.board, 'board');
   if (String(body.confirm || '').trim().toUpperCase() !== `DELETE ${id}`) {

@@ -1,4 +1,4 @@
-import { $, esc, api, money, toast, signIn, session, saveSession, sqLabel } from './common.js?v=10';
+import { $, esc, api, money, toast, signIn, session, saveSession, sqLabel } from './common.js?v=11';
 
 let data = null;
 let saleFilter = '';
@@ -145,7 +145,10 @@ function render() {
   const shown = sales.filter((s) => !f || `${s.buyer_name} ${s.contact} ${s.helper}`.toLowerCase().includes(f));
   h += `<section class="card"><div class="row" style="justify-content:space-between">
       <h2 style="margin:0">Sales (${sales.length})</h2>
-      <input type="text" id="saleFilter" placeholder="Search name, contact, helper" style="max-width:280px" value="${esc(saleFilter)}">
+      <div class="row">
+        <input type="text" id="saleFilter" placeholder="Search name, contact, helper" style="max-width:280px" value="${esc(saleFilter)}">
+        <button class="btn sm" data-act="download">Download sales</button>
+      </div>
     </div>
     <div class="table-wrap"><table><thead><tr><th>When</th><th>Buyer</th><th>Contact</th><th>Squares</th><th class="num">Amount</th><th>Paid by</th><th>Helper</th><th></th></tr></thead><tbody>
     ${shown
@@ -187,6 +190,13 @@ function render() {
       <p class="small muted">Changing the price only affects new sales.</p>
     </form></section>`;
 
+  // ---- start over
+  h += `<section class="card"><h2>Start a new year</h2>
+    <p class="small muted">Erases every board, sale, refund, prize checkmark and typed-in score, and opens a fresh Board 1.
+      Clears the teams and game date. Keeps the title, price, hold time, Venmo username and prize line. Passcodes don't change.</p>
+    <button class="btn sm ghost" style="color:var(--danger);border-color:var(--danger)" data-act="new-year">Start a new year…</button>
+  </section>`;
+
   $('#app').innerHTML = h;
   bind();
 }
@@ -214,6 +224,8 @@ function bind() {
       }
       if (a === 'reopen') return act('/admin/board/reopen', { board }, 'Board reopened for sale.');
       if (a === 'delete-board') return confirmDeleteBoard(board);
+      if (a === 'download') return downloadSales();
+      if (a === 'new-year') return confirmNewYear();
       if (a === 'refresh-scores') return act('/admin/refresh-scores', {}, 'Checked ESPN.');
       if (a === 'clear-score') return act('/admin/score', { quarter: Number(el.dataset.q), clear: true }, 'Back to ESPN for that quarter.');
       if (a === 'prize') return act('/admin/prize', { board, quarter: Number(el.dataset.q), done: el.checked });
@@ -249,6 +261,53 @@ function bind() {
     again.focus();
     again.setSelectionRange(pos, pos);
   });
+}
+
+// Every sale as a spreadsheet (CSV), e.g. to keep a record before starting over.
+function downloadSales() {
+  const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const rows = [['When', 'Buyer', 'Contact', 'Squares', 'Count', 'Amount', 'Paid by', 'Helper', 'Note']];
+  for (const s of [...data.sales].reverse()) {
+    rows.push([
+      new Date(s.created_at).toLocaleString(),
+      s.buyer_name,
+      s.contact,
+      s.squares.map(([b, i]) => sqLabel(b, i)).join(' '),
+      s.square_count,
+      (s.unit_cents * s.square_count / 100).toFixed(2),
+      METHOD_LABEL[s.method] || s.method,
+      s.helper || '',
+      s.note || '',
+    ]);
+  }
+  const csv = rows.map((r) => r.map(cell).join(',')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  a.download = `squares-sales-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    URL.revokeObjectURL(a.href);
+    a.remove();
+  }, 1000);
+}
+
+function confirmNewYear() {
+  const { totals, boards, sales } = data;
+  const lines = [
+    'Start a new year? This erases everything and can’t be undone.',
+    '',
+    `${boards.length} board${boards.length === 1 ? '' : 's'}, ${sales.length} sale${sales.length === 1 ? '' : 's'} (${money(totals.collected_cents)}) will be erased.`,
+  ];
+  if (sales.length) lines.push('Tap Cancel and use “Download sales” first if you want a record.');
+  lines.push('', 'To confirm, type: START OVER');
+  const typed = prompt(lines.join('\n'));
+  if (typed === null) return;
+  if (typed.trim().toUpperCase() !== 'START OVER') {
+    toast('Nothing was erased. You need to type START OVER exactly.', 4000);
+    return;
+  }
+  return act('/admin/new-year', { confirm: typed }, 'All set for a new year. Board 1 is open.');
 }
 
 // Deleting a board is permanent, so spell out what's on it and make the admin
