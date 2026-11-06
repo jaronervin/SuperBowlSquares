@@ -37,3 +37,25 @@ export function parseEspn(data, cfg) {
   }
   throw new Error(`Couldn't find ${top} vs ${side} on ESPN for ${cfg.game_date}`);
 }
+
+// Every game on ESPN's scoreboard with both teams known (placeholders like
+// TBD are skipped), for picking the matchup.
+export function listGames(data) {
+  const games = [];
+  for (const ev of data.events || []) {
+    const comp = ev.competitions?.[0];
+    const teams = comp?.competitors || [];
+    const side = (where) => {
+      const c = teams.find((x) => x.homeAway === where);
+      const t = c?.team;
+      if (!t?.abbreviation || /^(TBD|TBA)$/i.test(t.abbreviation)) return null;
+      return { abbr: t.abbreviation.toUpperCase(), name: t.shortDisplayName || t.name || t.displayName };
+    };
+    const away = side('away');
+    const home = side('home');
+    if (!away || !home) continue;
+    const type = (comp.status || ev.status || {}).type || {};
+    games.push({ id: ev.id, away, home, state: type.state, detail: type.shortDetail || type.detail || '' });
+  }
+  return games;
+}

@@ -6,7 +6,7 @@
 //   helper  – HELPER_PIN: hold squares, record paid sales.
 //   admin   – ADMIN_PIN: everything, including money, refunds, number draw.
 
-import { parseEspn } from './espn.js';
+import { parseEspn, listGames } from './espn.js';
 import { schemaStatements, UPGRADES } from './schema.js';
 
 const PUBLIC_CONFIG = ['title', 'subtitle', 'top_name', 'side_name', 'prize_text'];
@@ -87,6 +87,7 @@ async function route(request, env, url) {
   if (method === 'POST' && path === '/admin/prize') return markPrize(env, body);
   if (method === 'POST' && path === '/admin/score') return setScore(env, body);
   if (method === 'POST' && path === '/admin/refresh-scores') return refreshScores(env);
+  if (method === 'GET' && path === '/admin/espn-games') return espnGames(env, url);
   if (method === 'POST' && path === '/admin/sale/void') return voidSale(env, body);
 
   throw new HttpError(404, 'Not found.');
@@ -560,14 +561,44 @@ function inGameWindow(gameDate) {
   return now() >= start && now() <= start + 24 * 3600_000; // noon UTC to noon UTC next day
 }
 
-async function fetchEspn(cfg) {
-  const ymd = cfg.game_date.replace(/-/g, '');
-  const res = await fetch(
-    `https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates=${ymd}`,
-    { headers: { accept: 'application/json' } },
-  );
+// ESPN_BASE is only for local testing (pointing at a relay); production leaves it unset.
+async function fetchScoreboard(gameDate, env) {
+  const ymd = gameDate.replace(/-/g, '');
+  const base = env.ESPN_BASE || 'https://site.api.espn.com';
+  const res = await fetch(`${base}/apis/site/v2/sports/football/nfl/scoreboard?dates=${ymd}`, {
+    headers: { accept: 'application/json' },
+  });
   if (!res.ok) throw new Error(`ESPN returned ${res.status}`);
-  return parseEspn(await res.json(), cfg);
+  return res.json();
+}
+
+// No teams entered yet: if ESPN has exactly one game that day (always true on
+// Super Bowl Sunday), use it. Team names are filled in too unless the admin
+// already typed their own; then the abbreviations are matched to those names.
+async function adoptOnlyGame(env, cfg, data) {
+  const games = listGames(data);
+  if (games.length !== 1) {
+    throw new Error(
+      games.length
+        ? `ESPN lists ${games.length} games on ${cfg.game_date}. Pick yours with “Find the game on ESPN” on the admin page.`
+        : `ESPN doesn't list a game with both teams on ${cfg.game_date} yet.`,
+    );
+  }
+  const { away, home } = games[0];
+  const defaults = cfg.top_name === 'AFC' && cfg.side_name === 'NFC';
+  const like = (typed, team) => typed && team.name && typed.toLowerCase().includes(team.name.toLowerCase());
+  let top = away;
+  let side = home;
+  if (!defaults && (like(cfg.top_name, home) || like(cfg.side_name, away))) [top, side] = [home, away];
+  const updates = { top_abbr: top.abbr, side_abbr: side.abbr };
+  if (defaults) Object.assign(updates, { top_name: top.name, side_name: side.name });
+  await env.DB.batch([
+    ...Object.entries(updates).map(([k, v]) =>
+      env.DB.prepare('UPDATE config SET value = ? WHERE key = ?').bind(v, k),
+    ),
+    bumpStmt(env),
+  ]);
+  Object.assign(cfg, updates);
 }
 
 async function getScores(env, force) {
@@ -578,13 +609,14 @@ async function getScores(env, force) {
   } catch {
     cache = null;
   }
-  const configured = cfg.top_abbr && cfg.side_abbr && cfg.game_date;
   const stale = !cache || now() - cache.fetched_at > SCORE_CACHE_MS;
   // Once the game is over, stop asking ESPN.
   const finished = cache?.live?.state === 'post';
-  if (configured && stale && (force || (inGameWindow(cfg.game_date) && !finished))) {
+  if (cfg.game_date && stale && (force || (inGameWindow(cfg.game_date) && !finished))) {
     try {
-      cache = { ...(await fetchEspn(cfg)), fetched_at: now(), error: null };
+      const data = await fetchScoreboard(cfg.game_date, env);
+      if (!(cfg.top_abbr && cfg.side_abbr)) await adoptOnlyGame(env, cfg, data);
+      cache = { ...parseEspn(data, cfg), fetched_at: now(), error: null };
     } catch (err) {
       cache = { ...(cache || {}), fetched_at: now(), error: String(err.message || err) };
     }
@@ -621,8 +653,9 @@ function winningIdx(board, qScore) {
 // ---------------------------------------------------------------- admin
 
 async function adminState(env) {
-  const cfg = await getConfig(env);
+  // Scores first: on game day this may fill in the teams, which cfg should show.
   const scores = await getScores(env, false);
+  const cfg = await getConfig(env);
   const boards = await boardsWithSquares(env, '');
   const { results: sales } = await env.DB.prepare('SELECT * FROM sales ORDER BY id DESC').all();
   const { results: refunds } = await env.DB.prepare('SELECT * FROM refunds').all();
@@ -920,11 +953,20 @@ async function setScore(env, body) {
   return json({ ok: true });
 }
 
+async function espnGames(env, url) {
+  const cfg = await getConfig(env);
+  const date = url.searchParams.get('date') || cfg.game_date;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) throw new HttpError(400, 'Set the game date first.');
+  try {
+    return json({ date, games: listGames(await fetchScoreboard(date, env)) });
+  } catch (err) {
+    throw new HttpError(502, `Couldn't reach ESPN: ${err.message || err}`);
+  }
+}
+
 async function refreshScores(env) {
   const cfg = await getConfig(env);
-  if (!(cfg.top_abbr && cfg.side_abbr && cfg.game_date)) {
-    throw new HttpError(400, 'Set both team abbreviations and the game date first.');
-  }
+  if (!cfg.game_date) throw new HttpError(400, 'Set the game date first.');
   await env.DB.prepare("UPDATE config SET value = '' WHERE key = 'live_cache'").run();
   const scores = await getScores(env, true);
   await bump(env);

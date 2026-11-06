@@ -1,7 +1,8 @@
-import { $, esc, api, money, toast, signIn, session, saveSession, sqLabel } from './common.js?v=11';
+import { $, esc, api, money, toast, signIn, session, saveSession, sqLabel } from './common.js?v=12';
 
 let data = null;
 let saleFilter = '';
+let espn = null; // { date, games } from “Find the game on ESPN”, or { error }
 
 const METHOD_LABEL = { venmo: 'Venmo', cash: 'Cash', zelle: 'Zelle', other: 'Other' };
 const when = (ms) => (ms ? new Date(ms).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : '');
@@ -87,8 +88,15 @@ function render() {
   const ovr = new Map(overrides.map((o) => [o.quarter, o]));
   h += `<section class="card"><div class="row" style="justify-content:space-between">
       <h2 style="margin:0">Scores</h2>
-      <button class="btn sm" data-act="refresh-scores">Check ESPN now</button>
+      <div class="row">
+        <button class="btn sm" data-act="find-game">Find the game on ESPN</button>
+        <button class="btn sm" data-act="refresh-scores">Check ESPN now</button>
+      </div>
     </div>
+    ${espnHtml(cfg)}
+    <p class="small muted">${cfg.top_abbr && cfg.side_abbr
+      ? `Live scores: <strong>${esc(cfg.top_abbr)}</strong> (top) vs <strong>${esc(cfg.side_abbr)}</strong> (side) on ${esc(cfg.game_date || 'no date set')}.`
+      : `No teams picked yet. On game day the app picks them itself if ESPN lists only one game that day (always true for the Super Bowl), or pick them now with “Find the game on ESPN”.`}</p>
     <p class="small muted">${esc(cfg.top_name)} (top) – ${esc(cfg.side_name)} (side), cumulative at the end of each quarter.
       ${scores.fetched_at ? `Last ESPN check ${when(scores.fetched_at)}.` : 'ESPN not checked yet.'}
       ${scores.live ? ` Live: ${scores.live.top}–${scores.live.side}, ${esc(scores.live.detail)}.` : ''}</p>
@@ -226,6 +234,9 @@ function bind() {
       if (a === 'delete-board') return confirmDeleteBoard(board);
       if (a === 'download') return downloadSales();
       if (a === 'new-year') return confirmNewYear();
+      if (a === 'find-game') return findGame();
+      if (a === 'pick-game') return pickGame(Number(el.dataset.i), el.dataset.top);
+      if (a === 'close-espn') { espn = null; return render(); }
       if (a === 'refresh-scores') return act('/admin/refresh-scores', {}, 'Checked ESPN.');
       if (a === 'clear-score') return act('/admin/score', { quarter: Number(el.dataset.q), clear: true }, 'Back to ESPN for that quarter.');
       if (a === 'prize') return act('/admin/prize', { board, quarter: Number(el.dataset.q), done: el.checked });
@@ -341,6 +352,51 @@ function confirmDeleteBoard(id) {
     return;
   }
   return act('/admin/board/delete', { board: id, confirm: typed }, `Board ${id} deleted.`);
+}
+
+function espnHtml(cfg) {
+  if (!espn) return '';
+  if (espn.error) return `<div class="msg error">${esc(espn.error)}</div>`;
+  if (!espn.games.length) {
+    return `<div class="msg">ESPN doesn't list any games with both teams known on ${esc(espn.date)} yet.</div>`;
+  }
+  return `<div class="stack" style="margin:10px 0">
+    <div class="small muted">Games on ESPN for ${esc(espn.date)}. Pick which team goes across the top:</div>
+    ${espn.games
+      .map(
+        (g, i) => `<div class="row" style="border:1px solid var(--line);border-radius:10px;padding:8px 10px">
+          <strong>${esc(g.away.name)} at ${esc(g.home.name)}</strong>
+          <span class="small muted">${esc(g.detail)}</span>
+          <span style="flex:1"></span>
+          <button class="btn sm" data-act="pick-game" data-i="${i}" data-top="away">${esc(g.away.name)} on top</button>
+          <button class="btn sm" data-act="pick-game" data-i="${i}" data-top="home">${esc(g.home.name)} on top</button>
+        </div>`,
+      )
+      .join('')}
+    <div><button class="btn sm ghost" data-act="close-espn">Close</button></div>
+  </div>`;
+}
+
+async function findGame() {
+  try {
+    espn = await api('/admin/espn-games');
+  } catch (e) {
+    espn = { error: e.message };
+  }
+  render();
+}
+
+function pickGame(i, topSide) {
+  const g = espn.games[i];
+  const [top, side] = topSide === 'away' ? [g.away, g.home] : [g.home, g.away];
+  if (data.boards.some((b) => b.status === 'drawn') &&
+      !confirm('Numbers are already drawn. Changing which team is on top changes who wins. Continue?')) return;
+  espn = null;
+  return act(
+    '/admin/config',
+    { top_name: top.name, top_abbr: top.abbr, side_name: side.name, side_abbr: side.abbr },
+    `${top.name} across the top, ${side.name} down the side.`,
+  );
 }
 
 async function start() {

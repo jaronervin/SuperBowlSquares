@@ -13,7 +13,7 @@ Runs on Cloudflare Workers with a D1 (SQLite) database, on the free tier.
 1. **Selling.** Helpers pick squares on the open board. When a board fills, the next one opens automatically. Admin can also add boards by hand.
 2. **Closing.** Admin taps **Close sales**. Any board that isn't full gets **Didn't fill: refund**, which lists who to pay back and how much.
 3. **Drawing.** For each full board, admin taps **Draw numbers**. Digits 0–9 are shuffled with a secure random generator, separately for the top and side, and shown publicly with a timestamp. It can't be redone.
-4. **Game.** Scores come from ESPN automatically during the game (set both team abbreviations and the game date in Settings). Any quarter can be typed in by hand if ESPN is wrong or unavailable. Q4 is the score at the end of regulation; overtime never counts.
+4. **Game.** Scores come from ESPN automatically during the game. Teams: on game day, if none are entered and ESPN lists only one NFL game that day (always true for the Super Bowl), the app picks that game and fills in the team names itself. To set them earlier (once the matchup is known), tap **Find the game on ESPN** on the admin page and choose which team goes across the top. Any quarter can be typed in by hand if ESPN is wrong or unavailable. Q4 is the score at the end of regulation; overtime never counts.
 5. **Prizes.** Winners (with contact info) appear on the admin page as each quarter ends. Tick **Basket given** when delivered.
 
 ## One-time setup (Cloudflare dashboard, no terminal needed)

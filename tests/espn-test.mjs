@@ -1,4 +1,5 @@
-import { parseEspn } from '../src/espn.js';
+import { parseEspn, listGames } from '../src/espn.js';
+import { readFileSync } from 'node:fs';
 let fails=0; const ok=(c,m)=>{console.log((c?'PASS ':'FAIL ')+m); if(!c) fails++;};
 const ls=a=>a.map(v=>({value:v}));
 const game=(state,name,period,kc,sf)=>({events:[{competitions:[{status:{period,type:{state,name,shortDetail:'x'}},competitors:[
@@ -19,4 +20,12 @@ r=parseEspn(game('in','STATUS_IN_PROGRESS',5,[0,3,10,6,3],[0,10,0,9]),cfg);
 ok(r.quarters[3].top===19 && r.quarters[3].side===19,'during OT Q4 stays 19-19');
 r=parseEspn(game('pre','STATUS_SCHEDULED',0,[],[]),cfg); ok(r.quarters.every(q=>!q.done),'pregame: nothing final');
 let threw=false; try{parseEspn(game('pre','x',0,[],[]),{...cfg,side_abbr:'PHI'})}catch{threw=true} ok(threw,'wrong team errors');
+// Real ESPN data captured live: Jaguars at Ravens, Nov 5 2026, 3rd quarter.
+const real = JSON.parse(readFileSync(new URL('./fixtures/espn-2026-11-05-jax-bal-q3.json', import.meta.url)));
+const games = listGames(real);
+ok(games.length === 1 && games[0].away.abbr === 'JAX' && games[0].home.abbr === 'BAL' && games[0].away.name === 'Jaguars', 'real data: one game, Jaguars at Ravens');
+r = parseEspn(real, { top_abbr: 'JAX', side_abbr: 'BAL', game_date: '2026-11-05' });
+ok(r.quarters[0].done && r.quarters[0].top === 10 && r.quarters[0].side === 3, 'real data: Q1 10-3');
+ok(r.quarters[1].done && r.quarters[1].top === 17 && r.quarters[1].side === 3, 'real data: Q2 17-3');
+ok(!r.quarters[2].done && r.live.state === 'in' && r.live.period === 3, 'real data: Q3 in progress');
 console.log(fails?fails+' FAILED':'ALL PASSED');
