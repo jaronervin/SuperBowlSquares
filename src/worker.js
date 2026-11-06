@@ -7,6 +7,7 @@
 //   admin   – ADMIN_PIN: everything, including money, refunds, number draw.
 
 import { parseEspn } from './espn.js';
+import { schemaStatements } from './schema.js';
 
 const PUBLIC_CONFIG = ['title', 'subtitle', 'top_name', 'side_name', 'prize_text'];
 const ADMIN_CONFIG = [
@@ -22,6 +23,7 @@ export default {
     const url = new URL(request.url);
     if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
     try {
+      await ensureSchema(env);
       return await route(request, env, url);
     } catch (err) {
       if (err instanceof HttpError) return json({ error: err.message, ...err.extra }, err.status);
@@ -30,6 +32,17 @@ export default {
     }
   },
 };
+
+// Create the tables on a brand-new database. Checked once per worker instance.
+let schemaReady = false;
+async function ensureSchema(env) {
+  if (schemaReady) return;
+  const found = await env.DB.prepare(
+    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'login_failures'",
+  ).first();
+  if (!found) await env.DB.batch(schemaStatements().map((q) => env.DB.prepare(q)));
+  schemaReady = true;
+}
 
 class HttpError extends Error {
   constructor(status, message, extra = {}) {

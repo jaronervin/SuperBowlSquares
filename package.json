@@ -6,8 +6,6 @@
   "description": "Football squares fundraiser: in-person sign-up with helpers on tablets, public board links for buyers.",
   "scripts": {
     "dev": "wrangler dev",
-    "db:local": "wrangler d1 migrations apply squares --local",
-    "db:remote": "wrangler d1 migrations apply squares --remote",
     "deploy": "wrangler deploy",
     "test": "node tests/espn-test.mjs"
   },

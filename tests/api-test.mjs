@@ -1,4 +1,4 @@
-// Run against a FRESH local database: npm run db:local (after deleting .wrangler/state), npm run dev, then node tests/api-test.mjs
+// Run against a fresh local server: delete .wrangler/state, npm run dev, then node tests/api-test.mjs
 const B='http://localhost:8787/api';
 let fails=0; const ok=(c,m)=>{console.log((c?'PASS ':'FAIL ')+m); if(!c) fails++;};
 async function call(path,{token,body,method}={}){const r=await fetch(B+path,{method:method||(body?'POST':'GET'),headers:{'content-type':'application/json',...(token?{authorization:'Bearer '+token}:{})},body:body?JSON.stringify(body):undefined});return {status:r.status,data:await r.json()};}

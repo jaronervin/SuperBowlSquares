@@ -1,10 +1,15 @@
+// Database tables. The worker runs this automatically the first time it
+// handles a request, so a new deployment needs no manual database setup.
+// Every statement is safe to run again on an existing database.
+
+export const SCHEMA_SQL = `
 -- Settings the admin can change from the admin screen.
-CREATE TABLE config (
+CREATE TABLE IF NOT EXISTS config (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
 
-INSERT INTO config (key, value) VALUES
+INSERT OR IGNORE INTO config (key, value) VALUES
   ('title',          'Super Bowl Squares'),
   ('subtitle',       'Fundraiser'),
   ('top_name',       'AFC'),     -- team across the top (columns)
@@ -22,7 +27,7 @@ INSERT INTO config (key, value) VALUES
 
 -- One 10x10 board. Square idx = row * 10 + col.
 -- status: open (selling) | drawn (numbers assigned) | refund (didn't fill, refunding)
-CREATE TABLE boards (
+CREATE TABLE IF NOT EXISTS boards (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   status     TEXT NOT NULL DEFAULT 'open',
   col_digits TEXT,              -- JSON array of 10 digits for the top team
@@ -32,7 +37,7 @@ CREATE TABLE boards (
 );
 
 -- status: open | held (a helper has it in their cart) | sold
-CREATE TABLE squares (
+CREATE TABLE IF NOT EXISTS squares (
   board_id    INTEGER NOT NULL REFERENCES boards(id),
   idx         INTEGER NOT NULL,
   status      TEXT NOT NULL DEFAULT 'open',
@@ -42,11 +47,11 @@ CREATE TABLE squares (
   sale_id     INTEGER REFERENCES sales(id),
   PRIMARY KEY (board_id, idx)
 );
-CREATE INDEX squares_cart ON squares (hold_cart);
-CREATE INDEX squares_sale ON squares (sale_id);
+CREATE INDEX IF NOT EXISTS squares_cart ON squares (hold_cart);
+CREATE INDEX IF NOT EXISTS squares_sale ON squares (sale_id);
 
 -- One purchase at the table. Money amounts are in cents.
-CREATE TABLE sales (
+CREATE TABLE IF NOT EXISTS sales (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   token        TEXT NOT NULL UNIQUE,  -- private link token for the buyer
   buyer_name   TEXT NOT NULL,
@@ -60,7 +65,7 @@ CREATE TABLE sales (
 );
 
 -- Refunds paid back for squares on boards that didn't fill.
-CREATE TABLE refunds (
+CREATE TABLE IF NOT EXISTS refunds (
   sale_id  INTEGER NOT NULL,
   board_id INTEGER NOT NULL,
   done_at  INTEGER NOT NULL,
@@ -68,7 +73,7 @@ CREATE TABLE refunds (
 );
 
 -- Gift basket delivered to a winner.
-CREATE TABLE prizes (
+CREATE TABLE IF NOT EXISTS prizes (
   board_id     INTEGER NOT NULL,
   quarter      INTEGER NOT NULL,
   delivered_at INTEGER NOT NULL,
@@ -76,20 +81,30 @@ CREATE TABLE prizes (
 );
 
 -- Manual score overrides (cumulative score at the end of each quarter).
-CREATE TABLE score_overrides (
+CREATE TABLE IF NOT EXISTS score_overrides (
   quarter INTEGER PRIMARY KEY,
   top     INTEGER NOT NULL,
   side    INTEGER NOT NULL
 );
 
 -- Failed passcode attempts, for slowing down guessing.
-CREATE TABLE login_failures (
+CREATE TABLE IF NOT EXISTS login_failures (
   ip       TEXT PRIMARY KEY,
   count    INTEGER NOT NULL,
   first_at INTEGER NOT NULL
 );
 
 -- Start with Board 1.
-INSERT INTO boards (status, created_at) VALUES ('open', 0);
+INSERT OR IGNORE INTO boards (id, status, created_at) VALUES (1, 'open', 0);
 WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i + 1 FROM n WHERE i < 99)
-INSERT INTO squares (board_id, idx) SELECT 1, i FROM n;
+INSERT OR IGNORE INTO squares (board_id, idx) SELECT 1, i FROM n;
+`;
+
+export function schemaStatements() {
+  return SCHEMA_SQL.split('\n')
+    .map((line) => line.replace(/--.*$/, ''))
+    .join('\n')
+    .split(/;\s*(?:\n|$)/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}

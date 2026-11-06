@@ -10,11 +10,10 @@
   },
   "d1_databases": [
     {
+      // No database_id: the first deploy creates a database named "squares"
+      // and links it. The worker creates its own tables on first use.
       "binding": "DB",
-      "database_name": "squares",
-      // Replace with the id printed by `npx wrangler d1 create squares`
-      "database_id": "00000000-0000-0000-0000-000000000000",
-      "migrations_dir": "migrations"
+      "database_name": "squares"
     }
   ]
   // Secrets (set with `npx wrangler secret put NAME`, never committed):

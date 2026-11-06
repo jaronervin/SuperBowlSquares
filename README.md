@@ -16,38 +16,27 @@ Runs on Cloudflare Workers with a D1 (SQLite) database, on the free tier.
 4. **Game.** Scores come from ESPN automatically during the game (set both team abbreviations and the game date in Settings). Any quarter can be typed in by hand if ESPN is wrong or unavailable. Q4 is the score at the end of regulation; overtime never counts.
 5. **Prizes.** Winners (with contact info) appear on the admin page as each quarter ends. Tick **Basket given** when delivered.
 
-## One-time setup
+## One-time setup (Cloudflare dashboard, no terminal needed)
 
-You need a free Cloudflare account and Node.js 18+.
+1. In the Cloudflare dashboard, go to **Workers & Pages → Create → Import a repository**. Connect GitHub, pick this repo, and keep the project name **`squares`** (it must match `name` in `wrangler.jsonc`). Leave the build settings as they are and deploy. The first deploy creates the `squares` database by itself; the app creates its tables the first time it runs.
+2. Open the new worker → **Settings → Variables and Secrets** → add two **Secrets**:
+   - `HELPER_PIN`: the passcode helpers type on the tablets
+   - `ADMIN_PIN`: your passcode for the admin page
 
-```bash
-npm install
-npx wrangler login
-npx wrangler d1 create squares
-```
+   Use at least 6 characters. After 10 wrong tries from one network, sign-in pauses for 15 minutes. Changing either passcode signs everyone out.
+3. Open the address shown on the worker's page (e.g. `https://squares.<your-subdomain>.workers.dev/admin`), sign in with `ADMIN_PIN`, and fill in Settings.
 
-Copy the `database_id` it prints into `wrangler.jsonc`, then:
-
-```bash
-npm run db:remote
-npx wrangler secret put HELPER_PIN
-npx wrangler secret put ADMIN_PIN
-npm run deploy
-```
-
-Use passcodes that aren't easy to guess (at least 6 characters). After 10 wrong tries from one network, sign-in pauses for 15 minutes. Changing either passcode signs everyone out.
-
-Deploy prints the site address, e.g. `https://squares.<your-subdomain>.workers.dev`. To use your own domain instead, add it in the Cloudflare dashboard under the worker's **Settings → Domains & Routes**.
+Every push to `main` redeploys automatically. To use your own domain, add it under the worker's **Settings → Domains & Routes**.
 
 ## Venmo QR code
 
-In the Venmo app, open your QR code and save it as an image. Save it as `public/venmo-qr.png` and deploy again. Until then the checkout screen shows a placeholder. Also set your Venmo username in admin Settings.
+In the Venmo app, open your QR code and save it as an image. Add it to this repo as `public/venmo-qr.png` (or send it to Claude to add); the site redeploys on its own. Until then the checkout screen shows a placeholder. Also set your Venmo username in admin Settings.
 
 ## Running locally
 
 ```bash
+npm install
 printf 'HELPER_PIN=helper123\nADMIN_PIN=admin123\n' > .dev.vars
-npm run db:local
 npm run dev
 ```
 
