@@ -79,9 +79,19 @@ main { max-width: 1100px; margin: 0 auto; padding: 16px; }
 .helper-bar .tabs { margin-bottom: 0; padding-bottom: 0; }
 .helper-bar .hint { font-size: 0.8rem; color: var(--muted); }
 .card.tight { padding: 8px; }
-.helper main { padding-top: 10px; padding-bottom: 84px; } /* room for the fixed order bar */
-.helper .cartbar { padding-top: 8px; padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
-.helper .cartbar .btn.big { min-height: 48px; padding: 10px 18px; }
+.helper main { padding-top: 10px; padding-bottom: 10px; }
+/* The current order lives in the header, so the grid can use the full height. */
+.cart-inline { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; background: rgba(255,255,255,0.12); border-radius: 12px; padding: 4px 4px 4px 14px; }
+.cart-inline .sum { font-weight: 700; font-size: 1.05rem; }
+.cart-inline .timer { font-variant-numeric: tabular-nums; opacity: 0.85; font-size: 0.9rem; }
+.cart-inline .timer.low { color: var(--gold); opacity: 1; font-weight: 700; }
+.cart-inline .btn { min-height: 40px; padding: 6px 12px; }
+.cart-inline .btn.ghost { color: #fff; border-color: rgba(255,255,255,0.35); }
+/* On narrower screens, make room for the order by hiding the title and name. */
+@media (max-width: 1000px) {
+  .has-cart .top .title-block, .has-cart .top .who { display: none; }
+}
+.cart-inline .btn.primary { background: var(--gold); border-color: var(--gold); color: var(--gold-ink); font-size: 1.05rem; padding: 6px 16px; }
 
 /* ------------------------------------------------------------ controls */
 .btn {
@@ -206,20 +216,6 @@ button.sq { cursor: pointer; }
 .qbox.pending { background: #3b5070; }
 .qbox.pending .s { opacity: 0.5; }
 .live { margin-top: 8px; font-size: 0.9rem; }
-
-/* ------------------------------------------------------------ helper cart bar */
-.cartbar {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
-  background: var(--brand-dark); color: #fff;
-  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
-}
-.cartbar .inner { max-width: 1100px; margin: 0 auto; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-.cartbar .sum { font-weight: 700; font-size: 1.1rem; }
-.cartbar .timer { font-variant-numeric: tabular-nums; opacity: 0.85; }
-.cartbar .timer.low { color: var(--gold); opacity: 1; font-weight: 700; }
-.cartbar .spacer { flex: 1; }
-.cartbar .btn.ghost { color: #fff; border-color: rgba(255,255,255,0.35); }
-.cartbar .btn.primary { background: var(--gold); border-color: var(--gold); color: var(--gold-ink); }
 
 /* ------------------------------------------------------------ modal */
 .modal-bg {

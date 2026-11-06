@@ -28,6 +28,10 @@ Runs on Cloudflare Workers with a D1 (SQLite) database, on the free tier.
 
 Every push to `main` redeploys automatically. To use your own domain, add it under the worker's **Settings → Domains & Routes**.
 
+## Tablets
+
+On each tablet, open `/helper` and use **Share → Add to Home Screen**. The icon opens the sign-up table full-screen, without the browser's tabs and address bar, which gives the grid more room.
+
 ## Venmo QR code
 
 In the Venmo app, open your QR code and save it as an image. Add it to this repo as `public/venmo-qr.png` (or send it to Claude to add); the site redeploys on its own. Until then the checkout screen shows a placeholder. Also set your Venmo username in admin Settings.

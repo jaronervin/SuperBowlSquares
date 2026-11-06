@@ -1,4 +1,4 @@
-import { $, esc, api, money, toast, signIn, session, saveSession, boardHtml, sqLabel, fitBoard, onResize } from './common.js?v=6';
+import { $, esc, api, money, toast, signIn, session, saveSession, boardHtml, sqLabel, fitBoard, onResize } from './common.js?v=8';
 
 const CART_KEY = 'squares-cart';
 const METHODS = [
@@ -105,8 +105,7 @@ function render() {
   renderCart();
 }
 
-// Keep room for the sticky order bar at the bottom.
-const fitHelperBoard = () => fitBoard($('#app .board'), { bottom: 76, minShare: 0.35, maxRatio: 1.8 });
+const fitHelperBoard = () => fitBoard($('#app .board'), { bottom: 12, minShare: 0.35, maxRatio: 1.8 });
 onResize(fitHelperBoard);
 
 function cellFor(board, idx) {
@@ -125,20 +124,35 @@ function cellFor(board, idx) {
   return { cls: `open${isBusy}`, html: num, button: true, title: `${label}: open` };
 }
 
+// If showing or hiding the order changes the header's height (it can wrap
+// onto two lines on narrow screens), re-fit the grid to the new space.
+let headerH = 0;
+function refitIfHeaderChanged() {
+  const h = document.querySelector('header.top').offsetHeight;
+  if (h !== headerH) {
+    headerH = h;
+    if (!modalOpen) fitHelperBoard();
+  }
+}
+
 function renderCart() {
   const bar = $('#cartbar');
   const holds = data ? myHolds() : [];
   if (!holds.length || modalOpen) {
     bar.classList.add('hidden');
+    document.body.classList.remove('has-cart');
+    refitIfHeaderChanged();
     if (modalOpen) updateModalTimer();
     return;
   }
   bar.classList.remove('hidden');
+  document.body.classList.add('has-cart');
+  refitIfHeaderChanged();
   const n = holds.length;
   $('#cartSum').textContent = `${n} square${n === 1 ? '' : 's'} · ${money(n * data.config.price_cents)}`;
   const left = Math.min(...holds.map((h) => h.until)) - serverNow();
   const t = $('#cartTimer');
-  t.textContent = left > 0 ? `held for ${fmtLeft(left)}` : 'hold ran out — take payment soon or pick again';
+  t.textContent = left > 0 ? `${fmtLeft(left)} left` : 'time’s up';
   t.classList.toggle('low', left < 45_000);
 }
 

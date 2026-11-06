@@ -5,16 +5,29 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex">
   <title>Squares sign-up</title>
-  <link rel="stylesheet" href="/app.css?v=6">
+  <!-- "Add to Home Screen" opens this page full-screen, without browser bars. -->
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icon-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Squares">
+  <meta name="theme-color" content="#12305a">
+  <link rel="stylesheet" href="/app.css?v=8">
 </head>
 <body class="helper">
   <header class="top compact">
     <div class="inner">
-      <div>
+      <div class="title-block">
         <h1>Sign-up table</h1>
         <div class="sub" id="sub">Helpers only</div>
       </div>
       <div class="spacer"></div>
+      <div class="cart-inline hidden" id="cartbar">
+        <span class="sum" id="cartSum"></span>
+        <span class="timer" id="cartTimer"></span>
+        <button class="btn ghost" type="button" id="cartClear">Clear</button>
+        <button class="btn primary" type="button" id="cartCheckout">Take payment →</button>
+      </div>
       <a href="/" class="top-btn">Home</a>
       <a href="/admin" id="adminLink" class="top-btn hidden">Admin</a>
       <span class="who" id="who"></span>
@@ -23,18 +36,8 @@
   </header>
   <main id="app"></main>
 
-  <div class="cartbar hidden" id="cartbar">
-    <div class="inner">
-      <span class="sum" id="cartSum"></span>
-      <span class="timer" id="cartTimer"></span>
-      <span class="spacer"></span>
-      <button class="btn ghost" type="button" id="cartClear">Clear</button>
-      <button class="btn primary big" type="button" id="cartCheckout">Take payment →</button>
-    </div>
-  </div>
-
   <div class="modal-bg hidden" id="modal"><div class="modal" id="modalBody" role="dialog" aria-modal="true"></div></div>
 
-  <script type="module" src="/helper.js?v=6"></script>
+  <script type="module" src="/helper.js?v=8"></script>
 </body>
 </html>
