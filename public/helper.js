@@ -1,4 +1,4 @@
-import { $, esc, api, money, toast, signIn, session, saveSession, boardHtml, sqLabel, fitBoard, onResize } from './common.js?v=4';
+import { $, esc, api, money, toast, signIn, session, saveSession, boardHtml, sqLabel, fitBoard, onResize } from './common.js?v=6';
 
 const CART_KEY = 'squares-cart';
 const METHODS = [
@@ -84,16 +84,16 @@ function render() {
     return;
   }
 
-  html += `<div class="tabs" role="tablist">${boards
+  html += `<div class="helper-bar"><div class="tabs" role="tablist">${boards
     .map((b) => {
       const free = b.squares.filter((s) => s.s === 'open' || (s.s === 'held' && s.u < serverNow())).length;
       return `<button role="tab" data-board="${b.id}" aria-selected="${b.id === current}">Board ${b.id}<span class="count">${free} left</span></button>`;
     })
-    .join('')}</div>`;
+    .join('')}</div>
+    <span class="hint">Tap a square to pick it, tap again to drop it. Grey = another helper has it.</span></div>`;
 
   const board = boards.find((b) => b.id === current);
-  html += `<div class="card"><p class="small muted" style="margin:0 0 8px">Tap open squares to add them. Tap a yellow square again to drop it.
-    Grey squares are being held by another helper.</p><div class="board-wrap">${boardHtml({
+  html += `<div class="card tight"><div class="board-wrap">${boardHtml({
     topName: cfg.top_name,
     sideName: cfg.side_name,
     cols: null,
@@ -106,7 +106,7 @@ function render() {
 }
 
 // Keep room for the sticky order bar at the bottom.
-const fitHelperBoard = () => fitBoard($('#app .board'), { bottom: 96, minShare: 0.35 });
+const fitHelperBoard = () => fitBoard($('#app .board'), { bottom: 76, minShare: 0.35, maxRatio: 1.8 });
 onResize(fitHelperBoard);
 
 function cellFor(board, idx) {

@@ -71,6 +71,18 @@ main { max-width: 1100px; margin: 0 auto; padding: 16px; }
 .staff-links { max-width: 1100px; margin: 8px auto 24px; padding: 0 16px; font-size: 0.75rem; color: #9aa6b8; }
 .staff-links a { color: inherit; }
 
+/* Sign-up table: keep the chrome slim so the grid gets the room. */
+.top.compact { padding: 8px 16px; }
+.top.compact h1 { font-size: 1.15rem; }
+.top.compact .sub { font-size: 0.8rem; }
+.helper-bar { display: flex; gap: 8px 16px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.helper-bar .tabs { margin-bottom: 0; padding-bottom: 0; }
+.helper-bar .hint { font-size: 0.8rem; color: var(--muted); }
+.card.tight { padding: 8px; }
+.helper main { padding-top: 10px; padding-bottom: 84px; } /* room for the fixed order bar */
+.helper .cartbar { padding-top: 8px; padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
+.helper .cartbar .btn.big { min-height: 48px; padding: 10px 18px; }
+
 /* ------------------------------------------------------------ controls */
 .btn {
   border: 1px solid var(--line);
@@ -126,7 +138,6 @@ input:focus, select:focus, textarea:focus, .btn:focus-visible { outline: 3px sol
 .board-wrap { overflow-x: auto; }
 .board {
   /* fitBoard() sets --cw/--ch (square width/height in px) to fit the screen. */
-  --ratio: 1.25;
   position: relative;
   display: grid;
   grid-template-columns: 28px 30px repeat(10, var(--cw, minmax(0, 1fr)));
@@ -198,7 +209,7 @@ button.sq { cursor: pointer; }
 
 /* ------------------------------------------------------------ helper cart bar */
 .cartbar {
-  position: sticky; bottom: 0; z-index: 20;
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
   background: var(--brand-dark); color: #fff;
   padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
 }
@@ -243,7 +254,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 @media (max-width: 640px) {
   main { padding: 12px; }
   .card { padding: 12px; }
-  .board { --ratio: 1; grid-template-columns: 16px 20px repeat(10, var(--cw, minmax(0, 1fr))); grid-template-rows: auto 22px repeat(10, var(--ch, 30px)); gap: 2px; }
+  .board { grid-template-columns: 16px 20px repeat(10, var(--cw, minmax(0, 1fr))); grid-template-rows: auto 22px repeat(10, var(--ch, 30px)); gap: 2px; }
   .board .digit { font-size: 0.85rem; border-radius: 4px; }
   .board .team-top, .board .team-side { font-size: 0.75rem; }
   .sq { font-size: 0.5rem; padding: 1px; border-radius: 4px; }

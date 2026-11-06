@@ -148,38 +148,47 @@ export function boardHtml({ topName, sideName, cols, rows, cell }) {
  * Size a board's squares so all of it fits in the window, so nobody has to
  * scroll to see the whole grid. Sizes are set in pixels (--cw/--ch) rather
  * than measured after the fact, which behaves the same in every browser.
- * `bottom` is space to keep free under it (e.g. a sticky bar). If the board
- * starts low on the page, it's sized to fit the full window instead, so it
- * fits once scrolled to.
+ *
+ * Squares are as tall as the height allows, and can be up to `maxRatio`
+ * times wider than tall when there's spare width (landscape tablets), which
+ * makes them bigger to tap. `bottom` is space to keep free under the board
+ * (e.g. a sticky bar). If the board starts low on the page, it's sized to
+ * fit the full window instead, so it fits once scrolled to.
  */
-export function fitBoard(board, { bottom = 16, minShare = 0.6 } = {}) {
+export function fitBoard(board, { bottom = 16, minShare = 0.6, maxRatio = 1.6 } = {}) {
   if (!board) return;
-  const cs = getComputedStyle(board);
-  const ratio = parseFloat(cs.getPropertyValue('--ratio')) || 1.25;
-  const gap = parseFloat(cs.columnGap) || 0;
   const first = board.querySelector('.sq');
   if (!first) return;
-  // Space taken by the team name and digit labels (left of and above square 0).
-  // (Measured from the team labels, since the grid is centered in the board.)
+  const gap = parseFloat(getComputedStyle(board).columnGap) || 0;
+  // Space taken by the team name and digit labels (left of and above square 0),
+  // measured from the team labels since the grid is centered in the board.
   const labelW = first.offsetLeft - board.querySelector('.team-side').offsetLeft;
   const labelH = first.offsetTop - board.querySelector('.team-top').offsetTop;
-  const availW = board.clientWidth;
 
-  const vh = window.innerHeight;
+  // The layout viewport: unlike innerHeight it doesn't shrink when someone
+  // pinch-zooms, so zooming never makes the squares smaller.
+  const vh = document.documentElement.clientHeight;
   const top = board.getBoundingClientRect().top + window.scrollY;
   let availH = vh - top - bottom;
   if (availH < vh * minShare) availH = vh - bottom - 16;
 
-  const byWidth = (availW - labelW - 9 * gap) / 10;
-  const byHeight = ((availH - labelH - 9 * gap) / 10) * ratio;
-  const cw = Math.max(26, Math.floor(Math.min(byWidth, byHeight)));
+  const byWidth = Math.floor((board.clientWidth - labelW - 9 * gap) / 10);
+  const byHeight = Math.floor((availH - labelH - 9 * gap) / 10);
+  const ch = Math.max(26, Math.min(byHeight, byWidth));
+  const cw = Math.max(26, Math.min(byWidth, Math.floor(ch * maxRatio)));
   board.style.setProperty('--cw', `${cw}px`);
-  board.style.setProperty('--ch', `${Math.floor(cw / ratio)}px`);
+  board.style.setProperty('--ch', `${ch}px`);
 }
 
+// Re-fit after rotating or resizing the window, but not when someone is
+// pinch-zooming (the layout size doesn't change then).
 export function onResize(fn) {
   let t;
+  let last = `${document.documentElement.clientWidth}x${document.documentElement.clientHeight}`;
   window.addEventListener('resize', () => {
+    const now = `${document.documentElement.clientWidth}x${document.documentElement.clientHeight}`;
+    if (now === last) return;
+    last = now;
     clearTimeout(t);
     t = setTimeout(fn, 100);
   });
