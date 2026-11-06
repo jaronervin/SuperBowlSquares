@@ -1,4 +1,4 @@
-import { $, esc, api, money, toast, signIn, session, saveSession, boardHtml, sqLabel, fitBoard, onResize } from './common.js?v=8';
+import { $, esc, api, money, toast, signIn, session, saveSession, boardHtml, sqLabel, fitBoard, onResize } from './common.js?v=9';
 
 const CART_KEY = 'squares-cart';
 const METHODS = [
@@ -102,7 +102,22 @@ function render() {
   })}</div></div>`;
   app.innerHTML = html;
   fitHelperBoard();
+  nextExpiry = soonestOtherHold();
   renderCart();
+}
+
+// When another helper's hold runs out, redraw so the square shows as open
+// again, even if their tablet was closed and nothing else changes.
+let nextExpiry = null;
+function soonestOtherHold() {
+  let soonest = null;
+  const t = serverNow();
+  for (const b of data?.boards || []) {
+    for (const s of b.squares) {
+      if (s.s === 'held' && s.u > t && (soonest === null || s.u < soonest)) soonest = s.u;
+    }
+  }
+  return soonest;
 }
 
 const fitHelperBoard = () => fitBoard($('#app .board'), { bottom: 12, minShare: 0.35, maxRatio: 1.8 });
@@ -154,6 +169,31 @@ function renderCart() {
   const t = $('#cartTimer');
   t.textContent = left > 0 ? `${fmtLeft(left)} left` : 'time’s up';
   t.classList.toggle('low', left < 45_000);
+  // Time ran out and they're not on the payment screen: let the squares go so
+  // other helpers can sell them. (On the payment screen the helper can still
+  // tap "More time", so a sale in progress isn't lost.)
+  if (left <= 0) releaseExpired();
+}
+
+let releasing = false;
+async function releaseExpired() {
+  if (releasing) return;
+  releasing = true;
+  try {
+    await api('/release', { method: 'POST', body: { cart } });
+    toast('Time ran out, so those squares were let go.');
+    await load(true);
+  } catch {
+    /* try again on the next tick */
+  } finally {
+    releasing = false;
+  }
+}
+
+// Runs every second: countdown, auto-release, and redraw on others' expiry.
+function tick() {
+  renderCart();
+  if (nextExpiry !== null && serverNow() >= nextExpiry && !modalOpen) render();
 }
 
 function fmtLeft(ms) {
@@ -378,6 +418,6 @@ async function start() {
   $('#signout').classList.remove('hidden');
   await load(true);
   setInterval(() => load(false).catch(() => {}), 2000);
-  setInterval(renderCart, 1000);
+  setInterval(tick, 1000);
 }
 start();
