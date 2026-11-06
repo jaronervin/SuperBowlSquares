@@ -1,4 +1,4 @@
-import { $, esc, api, money, toast, signIn, session, saveSession, sqLabel } from './common.js?v=14';
+import { $, esc, api, money, toast, signIn, session, saveSession, sqLabel } from './common.js?v=15';
 
 let data = null;
 let saleFilter = '';
