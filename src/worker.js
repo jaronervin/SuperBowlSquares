@@ -81,6 +81,7 @@ async function route(request, env, url) {
   if (method === 'POST' && path === '/admin/board/draw') return drawBoard(env, body);
   if (method === 'POST' && path === '/admin/board/refund') return refundBoard(env, body);
   if (method === 'POST' && path === '/admin/board/reopen') return reopenBoard(env, body);
+  if (method === 'POST' && path === '/admin/board/delete') return deleteBoard(env, body);
   if (method === 'POST' && path === '/admin/refund') return markRefund(env, body);
   if (method === 'POST' && path === '/admin/prize') return markPrize(env, body);
   if (method === 'POST' && path === '/admin/score') return setScore(env, body);
@@ -777,6 +778,34 @@ async function refundBoard(env, body) {
     ).bind(id),
     bumpStmt(env),
   ]);
+  return json({ ok: true });
+}
+
+// Permanently remove a board, its squares, and the sales (or the part of a
+// sale) on it. The caller must send confirm: "DELETE <id>", typed by the admin.
+async function deleteBoard(env, body) {
+  const id = int(body.board, 'board');
+  if (String(body.confirm || '').trim().toUpperCase() !== `DELETE ${id}`) {
+    throw new HttpError(400, `To delete Board ${id}, type DELETE ${id} exactly.`);
+  }
+  const board = await env.DB.prepare('SELECT id FROM boards WHERE id = ?').bind(id).first();
+  if (!board) throw new HttpError(404, 'No such board.');
+  await env.DB.batch([
+    // Sales with squares on other boards too keep those squares; only this
+    // board's part comes off their count (and so off the totals).
+    env.DB.prepare(
+      `UPDATE sales SET square_count = square_count -
+         (SELECT COUNT(*) FROM squares WHERE squares.sale_id = sales.id AND squares.board_id = ?1)
+       WHERE id IN (SELECT sale_id FROM squares WHERE board_id = ?1 AND sale_id IS NOT NULL)`,
+    ).bind(id),
+    env.DB.prepare('DELETE FROM squares WHERE board_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM sales WHERE square_count <= 0'),
+    env.DB.prepare('DELETE FROM refunds WHERE board_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM prizes WHERE board_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM boards WHERE id = ?').bind(id),
+    bumpStmt(env),
+  ]);
+  await ensureOpenBoard(env);
   return json({ ok: true });
 }
 

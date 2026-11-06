@@ -58,3 +58,4 @@ Then open http://localhost:8787/helper.
 
 - `npm test` checks the ESPN score parsing, including an overtime game (no server needed).
 - `tests/api-test.mjs` runs the whole flow against a fresh local server: two helpers fighting over one square, sales, auto-new board, the draw, winners, refunds.
+- `tests/delete-board-test.mjs` checks deleting a board (confirmation, sales split across boards, totals). Same setup as above.

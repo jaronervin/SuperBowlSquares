@@ -1,4 +1,4 @@
-import { $, esc, api, money, toast, signIn, session, saveSession, sqLabel } from './common.js?v=9';
+import { $, esc, api, money, toast, signIn, session, saveSession, sqLabel } from './common.js?v=10';
 
 let data = null;
 let saleFilter = '';
@@ -69,6 +69,7 @@ function render() {
     if (b.status === 'open' && b.sold === 100) actions += `<button class="btn sm primary" data-act="draw" data-board="${b.id}">Draw numbers</button>`;
     if (!open && b.status === 'open' && b.sold < 100) actions += `<button class="btn sm" data-act="refund-board" data-board="${b.id}">Didn't fill: refund</button>`;
     if (b.status === 'refund') actions += `<button class="btn sm" data-act="reopen" data-board="${b.id}">Undo refund</button>`;
+    actions += ` <button class="btn sm ghost" style="color:var(--danger)" data-act="delete-board" data-board="${b.id}">Delete</button>`;
     h += `<tr>
       <td><strong>${b.id}</strong></td>
       <td><span class="pill ${b.status}">${status}</span>${b.held ? ` <span class="small muted">${b.held} held</span>` : ''}</td>
@@ -212,6 +213,7 @@ function bind() {
         return act('/admin/board/refund', { board }, 'Marked for refund.');
       }
       if (a === 'reopen') return act('/admin/board/reopen', { board }, 'Board reopened for sale.');
+      if (a === 'delete-board') return confirmDeleteBoard(board);
       if (a === 'refresh-scores') return act('/admin/refresh-scores', {}, 'Checked ESPN.');
       if (a === 'clear-score') return act('/admin/score', { quarter: Number(el.dataset.q), clear: true }, 'Back to ESPN for that quarter.');
       if (a === 'prize') return act('/admin/prize', { board, quarter: Number(el.dataset.q), done: el.checked });
@@ -247,6 +249,39 @@ function bind() {
     again.focus();
     again.setSelectionRange(pos, pos);
   });
+}
+
+// Deleting a board is permanent, so spell out what's on it and make the admin
+// type the board number. The server checks the typed text too.
+function confirmDeleteBoard(id) {
+  const b = data.boards.find((x) => x.id === id);
+  let amount = 0;
+  const buyers = new Set();
+  for (const s of data.sales) {
+    const n = s.squares.filter(([bid]) => bid === id).length;
+    if (n) {
+      amount += n * s.unit_cents;
+      buyers.add(`${s.buyer_name}|${s.contact}`);
+    }
+  }
+  const lines = [`Delete Board ${id}? This can't be undone.`, ''];
+  if (b.sold) {
+    lines.push(
+      `It has ${b.sold} sold square${b.sold === 1 ? '' : 's'} from ${buyers.size} ${buyers.size === 1 ? 'person' : 'people'} (${money(amount)}).`,
+      'Those sales will be erased. If anyone really paid, refund them yourself.',
+    );
+  } else {
+    lines.push('No squares are sold on it.');
+  }
+  if (b.status === 'drawn') lines.push('', 'Its numbers are already drawn, so it may be in play.');
+  lines.push('', `To confirm, type: DELETE ${id}`);
+  const typed = prompt(lines.join('\n'));
+  if (typed === null) return;
+  if (typed.trim().toUpperCase() !== `DELETE ${id}`) {
+    toast(`Not deleted. You need to type DELETE ${id} exactly.`, 4000);
+    return;
+  }
+  return act('/admin/board/delete', { board: id, confirm: typed }, `Board ${id} deleted.`);
 }
 
 async function start() {
