@@ -354,6 +354,7 @@ async function start() {
   sess = session();
   if (!sess?.token) sess = await signIn($('#app'), { title: 'Helper sign-in' });
   $('#who').textContent = sess.name;
+  if (sess.role === 'admin') $('#adminLink').classList.remove('hidden');
   $('#signout').classList.remove('hidden');
   await load(true);
   setInterval(() => load(false).catch(() => {}), 2000);

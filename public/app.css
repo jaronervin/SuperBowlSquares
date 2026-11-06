@@ -67,6 +67,10 @@ main { max-width: 1100px; margin: 0 auto; padding: 16px; }
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .stack > * + * { margin-top: 10px; }
 
+/* Quiet links for helpers at the bottom of the public page. */
+.staff-links { max-width: 1100px; margin: 8px auto 24px; padding: 0 16px; font-size: 0.75rem; color: #9aa6b8; }
+.staff-links a { color: inherit; }
+
 /* ------------------------------------------------------------ controls */
 .btn {
   border: 1px solid var(--line);
