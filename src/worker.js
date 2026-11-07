@@ -17,7 +17,7 @@ const ADMIN_CONFIG = [
   'price_cents', 'hold_minutes', 'venmo_user', 'cashapp_tag', 'paypal_id', 'prize_text', 'sales_open',
   'online_open', 'online_max', 'reserve_minutes', 'confirm_hours',
   'org_name', 'contact', 'about_text', 'color_main', 'color_accent', 'setup_done', 'logo_ver',
-  'notify_email', 'email_from',
+  'notify_email',
 ];
 const NUMERIC_CONFIG = ['price_cents', 'hold_minutes', 'online_max', 'reserve_minutes', 'confirm_hours'];
 const ONLINE_BUYER = 'Online buyer';
@@ -504,8 +504,11 @@ async function boardsWithSquares(env, where) {
 
 // ---------------------------------------------------------------- emails
 
-// The address emails come from: the setting, or <subdomain>@<domain> of the site
+// The address emails come from: <subdomain>@<domain> of the site
 // (ghems.corkandpin.com sends as ghems@corkandpin.com). None on workers.dev.
+// email_from overrides it, but isn't on the admin page on purpose: it has to be an
+// address at a domain verified in Resend, or every email fails. Set it directly in
+// the database if a group ever needs a different address.
 function senderFor(cfg, url) {
   if (cfg.email_from) return cfg.email_from;
   const parts = url.hostname.split('.');
@@ -551,7 +554,7 @@ async function sendTestEmail(env, url) {
   if (!emailReady(env)) throw new HttpError(409, 'Email isn’t set up yet: the RESEND_API_KEY secret is missing in Cloudflare.');
   if (!cfg.notify_email) throw new HttpError(400, 'Fill in “Send online-order notices to” and save first.');
   const from = senderFor(cfg, url);
-  if (!from) throw new HttpError(400, 'Fill in “Emails come from” (an address at your domain) and save first.');
+  if (!from) throw new HttpError(400, 'Emails only work on the site’s own domain address (like ghems.corkandpin.com), not this one.');
   const r = await sendEmail(env, { ...testEmail({ ...cfg, email_from: from }, url.origin), from: fromLine({ ...cfg, email_from: from }), to: cfg.notify_email });
   if (!r.ok) throw new HttpError(502, `The email didn’t send: ${r.error}`);
   return json({ ok: true, to: cfg.notify_email, from });
@@ -1348,7 +1351,7 @@ async function setConfig(env, body) {
     }
     if (k === 'top_abbr' || k === 'side_abbr') value = value.toUpperCase();
     if (k === 'cashapp_tag' || k === 'venmo_user' || k === 'paypal_id') value = payHandle(k, value);
-    if ((k === 'notify_email' || k === 'email_from') && value && !isEmail(value)) throw new HttpError(400, 'That doesn’t look like an email address.');
+    if (k === 'notify_email' && value && !isEmail(value)) throw new HttpError(400, 'That doesn’t look like an email address.');
     if ((k === 'color_main' || k === 'color_accent') && !validColor(value)) throw new HttpError(400, 'Colors look like #1d4f91.');
     if (k === 'setup_done') value = value === '1' || value === 'true' ? '1' : '0';
     if (k === 'logo_ver') continue; // changes only with the logo itself

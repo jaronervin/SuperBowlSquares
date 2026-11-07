@@ -1,7 +1,7 @@
-import { $, esc, api, money, toast, signIn, session, saveSession, sqLabel } from './common.js?v=22';
-import { brandingEditor } from './branding.js?v=22';
-import { runWizard } from './wizard.js?v=22';
-import { METHOD_LABEL } from './pay.js?v=22';
+import { $, esc, api, money, toast, signIn, session, saveSession, sqLabel } from './common.js?v=23';
+import { brandingEditor } from './branding.js?v=23';
+import { runWizard } from './wizard.js?v=23';
+import { METHOD_LABEL } from './pay.js?v=23';
 
 let data = null;
 let saleFilter = '';
@@ -233,7 +233,6 @@ function render() {
         ${field('venmo_user', 'Venmo username (e.g. @GHEMS-PTA)')}
         ${field('paypal_id', 'PayPal.me link or PayPal email')}
         ${field('notify_email', 'Send online-order notices to (email)', 'email')}
-        ${field('email_from', `Emails come from${data.email.from && !cfg.email_from ? ` (blank = ${data.email.from})` : ''}`, 'email')}
         ${field('online_max', 'Most squares in one online order', 'number', 'min="1" max="100"')}
         ${field('reserve_minutes', 'Minutes an online buyer has to pay', 'number', 'min="5" max="240"')}
         ${field('confirm_hours', 'Hours to confirm an online payment before its squares go back on sale', 'number', 'min="1" max="168"')}
@@ -243,7 +242,7 @@ function render() {
       <div class="row small">
         <span class="pill ${data.email.ready ? 'drawn' : 'refund'}">Email ${data.email.ready ? 'set up' : 'not set up'}</span>
         <button class="btn sm" type="button" data-act="test-email" ${data.email.ready ? '' : 'disabled'}>Send a test email</button>
-        <span class="muted">Buyers who give an email get a “You’re in!” email when you confirm their online order.</span>
+        <span class="muted">${data.email.from ? `Emails come from <strong>${esc(data.email.from)}</strong>. ` : ''}Buyers who give an email get a “You’re in!” email when you confirm their online order.</span>
       </div>
       <p class="small muted">Changing the price only affects new sales. Fill in only the payment apps you use;
         each one gets a pay code at the sign-up table and a pay button for online orders. Leave the rest blank.</p>

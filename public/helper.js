@@ -1,5 +1,5 @@
-import { $, esc, api, money, toast, signIn, session, saveSession, boardHtml, sqLabel, fitBoard, onResize } from './common.js?v=22';
-import { payOptions, payLink, handleText, fillsNote, qrHtml } from './pay.js?v=22';
+import { $, esc, api, money, toast, signIn, session, saveSession, boardHtml, sqLabel, fitBoard, onResize } from './common.js?v=23';
+import { payOptions, payLink, handleText, fillsNote, qrHtml } from './pay.js?v=23';
 
 const CART_KEY = 'squares-cart';
 

@@ -22,7 +22,7 @@ Squares waiting on an online order show striped on every grid and can't be picke
 
 - When a buyer taps **I paid with …**, a notice goes to the "Send online-order notices to" address in Settings, with a button to the Online orders list. Replies go to the buyer if they gave an email.
 - When you **Confirm** an online order, a buyer who gave an email gets "You're in!" with their squares and personal link. Replies go to the notices address.
-- Setup: create a Resend API key (Sending access, the site's domain) and add it to the worker as the secret `RESEND_API_KEY`; fill in the notices address under Settings; use **Send a test email**. "Emails come from" can stay blank: `ghems.corkandpin.com` sends as `ghems@corkandpin.com`. Without the key, no emails are sent and everything else works the same.
+- Setup: create a Resend API key (Sending access, the site's domain) and add it to the worker as the secret `RESEND_API_KEY`; fill in the notices address under Settings; use **Send a test email**. The sender is worked out from the site's address (`ghems.corkandpin.com` sends as `ghems@corkandpin.com`) and isn't editable on the admin page, since it must be at a domain verified in Resend. To override it, set the `email_from` config row directly in the database. Without the key, no emails are sent and everything else works the same.
 
 ## corkandpin.com front page
 

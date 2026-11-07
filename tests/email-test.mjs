@@ -1,6 +1,8 @@
 // Emails, against a stand-in for Resend. Run with .dev.vars containing
 // RESEND_API_KEY=re_test and RESEND_BASE=http://localhost:8789, a mock server on
-// 8789 writing each request as a JSON line to the file in MOCK_LOG.
+// 8789 writing each request as a JSON line to the file in MOCK_LOG. Local addresses
+// have no subdomain, so first set the sender directly:
+//   npx wrangler d1 execute squares --local --command "UPDATE config SET value='ghems@corkandpin.com' WHERE key='email_from'"
 import { readFileSync } from 'node:fs';
 const B = 'http://localhost:8787/api';
 let fails = 0;
@@ -17,7 +19,7 @@ let a = (await call('/admin', { token: ad })).data;
 ok(a.email.ready === true, 'admin sees email is set up');
 ok((await call('/admin/email/test', { token: ad, body: {} })).status === 400, 'test email asks for a notices address first');
 ok((await call('/admin/config', { token: ad, body: { notify_email: 'not an email' } })).status === 400, 'bad address refused');
-await call('/admin/config', { token: ad, body: { notify_email: 'ghemslions@gmail.com', email_from: 'ghems@corkandpin.com', org_name: 'GHEMS PTA', title: 'GHEMS Super Bowl Squares', contact: 'ghemslions@gmail.com', online_open: '1', cashapp_tag: 'FriendsofGHEMS' } });
+await call('/admin/config', { token: ad, body: { notify_email: 'ghemslions@gmail.com', org_name: 'GHEMS PTA', title: 'GHEMS Super Bowl Squares', contact: 'ghemslions@gmail.com', online_open: '1', cashapp_tag: 'FriendsofGHEMS' } });
 const t = await call('/admin/email/test', { token: ad, body: {} });
 ok(t.status === 200 && t.data.to === 'ghemslions@gmail.com', 'test email sent');
 let m = sent().at(-1);
