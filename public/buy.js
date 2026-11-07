@@ -1,6 +1,6 @@
 // Online buying: pick squares, enter your name, reserve, then pay with Venmo
 // on your order page (/?me=...). The PTA confirms the payment.
-import { $, esc, api, money, toast, boardHtml, sqLabel, fitBoard, onResize } from './common.js?v=23';
+import { $, esc, api, money, toast, boardHtml, sqLabel, fitBoard, onResize } from './common.js?v=24';
 
 const CART_KEY = 'squares-buy-cart';
 let data = null;

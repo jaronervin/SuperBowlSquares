@@ -3,8 +3,8 @@
 //     optionally remove a white background, shrink it, upload it
 //   - suggest two colors from the logo
 //   - pick colors with a live preview that uses the real site styles
-import { esc, api, toast } from './common.js?v=23';
-import { themeVars, contrast, hexToRgb, rgbToHex, luminance, DEFAULT_MAIN, DEFAULT_ACCENT } from './theme.js?v=23';
+import { esc, api, toast } from './common.js?v=24';
+import { themeVars, contrast, hexToRgb, rgbToHex, luminance, DEFAULT_MAIN, DEFAULT_ACCENT } from './theme.js?v=24';
 
 const OUT = 512; // saved logo size, square
 

@@ -1,7 +1,7 @@
-import { $, esc, api, money, toast, signIn, session, saveSession, sqLabel } from './common.js?v=23';
-import { brandingEditor } from './branding.js?v=23';
-import { runWizard } from './wizard.js?v=23';
-import { METHOD_LABEL } from './pay.js?v=23';
+import { $, esc, api, money, toast, signIn, session, saveSession, sqLabel } from './common.js?v=24';
+import { brandingEditor } from './branding.js?v=24';
+import { runWizard } from './wizard.js?v=24';
+import { METHOD_LABEL } from './pay.js?v=24';
 
 let data = null;
 let saleFilter = '';
@@ -215,8 +215,14 @@ function render() {
     </form></section>`;
 
   // ---- settings
+  // Payment names are saved without $ / @; show them the way people know them.
+  const display = (k) => {
+    if (k === 'cashapp_tag' && cfg[k]) return '$' + cfg[k];
+    if (k === 'venmo_user' && cfg[k]) return '@' + cfg[k];
+    return cfg[k] ?? '';
+  };
   const field = (k, label, type = 'text', extra = '') =>
-    `<label class="field"><span>${label}</span><input type="${type}" name="${k}" value="${esc(cfg[k] ?? '')}" ${extra}></label>`;
+    `<label class="field"><span>${label}</span><input type="${type}" name="${k}" value="${esc(display(k))}" ${extra}></label>`;
   h += `<section class="card"><h2>Settings</h2>
     <form id="settings" class="stack">
       <div class="form-grid">
