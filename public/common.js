@@ -217,3 +217,31 @@ export function scoresHtml(scores, topName, sideName) {
   }
   return `<div class="scores">${boxes}</div>${live}`;
 }
+
+// "jane@gmial.com" -> "jane@gmail.com": a suggestion for common email-domain
+// typos, or null. Only suggests when the domain is one or two letters off.
+const COMMON_DOMAINS = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com', 'aol.com', 'comcast.net', 'verizon.net', 'me.com', 'msn.com', 'live.com', 'att.net', 'bcps.org', 'bcps.k12.md.us'];
+function editDistance(a, b) {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+    }
+  }
+  return d[a.length][b.length];
+}
+export function emailSuggestion(value) {
+  const m = /^([^\s@]+)@([^\s@]+\.[^\s@]+)$/.exec(String(value || '').trim());
+  if (!m) return null;
+  const domain = m[2].toLowerCase();
+  if (COMMON_DOMAINS.includes(domain)) return null;
+  let best = null;
+  for (const d of COMMON_DOMAINS) {
+    const dist = editDistance(domain, d);
+    if (dist <= 2 && (!best || dist < best.dist)) best = { d, dist };
+  }
+  return best ? `${m[1]}@${best.d}` : null;
+}
+export const looksLikeEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v || '').trim());

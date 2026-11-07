@@ -134,7 +134,7 @@ async function route(request, env, url, ctx) {
   if (method === 'POST' && path === '/hold') return hold(env, body, session);
   if (method === 'POST' && path === '/release') return release(env, body);
   if (method === 'POST' && path === '/extend') return extend(env, body);
-  if (method === 'POST' && path === '/sell') return sell(env, body, session, url);
+  if (method === 'POST' && path === '/sell') return sell(env, body, session, url, ctx);
 
   if (session.role !== 'admin') throw new HttpError(403, 'Admin passcode required.');
   if (method === 'GET' && path === '/admin') return adminState(env, url);
@@ -542,11 +542,12 @@ async function notifyPaid(env, cfg, token, origin) {
   if (!r.ok) console.error('payment notice email failed:', r.error);
 }
 
-async function emailBuyer(env, cfg, order, url) {
-  const msg = confirmedEmail(cfg, order, url.origin);
+async function emailBuyer(env, cfg, order, url, kind = 'online') {
+  const msg = confirmedEmail(cfg, order, url.origin, kind);
   const replyTo = isEmail(cfg.notify_email) ? cfg.notify_email : isEmail(cfg.contact) ? cfg.contact : undefined;
   const r = await sendEmail(env, { ...msg, from: fromLine({ ...cfg, email_from: senderFor(cfg, url) }), to: order.contact, replyTo });
-  if (!r.ok) console.error('confirmation email failed:', r.error);
+  if (!r.ok) console.error('buyer email failed:', r.error);
+  return r;
 }
 
 async function sendTestEmail(env, url) {
@@ -868,12 +869,12 @@ async function placeOrder(env, cfg, o) {
   const results = await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO sales (token, buyer_name, contact, method, unit_cents, square_count, helper, note,
-                          created_at, status, source, code, expires_at, confirmed_at, ip)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                          created_at, status, source, code, expires_at, confirmed_at, ip, mailing_list)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(
       token, o.buyerName, o.contact, o.method, unit, expectSet.size, o.helper ?? null, o.note || null,
       now(), o.status, o.source, o.code ?? null, o.expiresAt ?? null,
-      o.status === 'confirmed' ? now() : null, o.ip ?? null,
+      o.status === 'confirmed' ? now() : null, o.ip ?? null, o.mailingList ? 1 : 0,
     ),
     env.DB.prepare(
       `UPDATE squares SET status = ?, sale_id = (SELECT id FROM sales WHERE token = ?),
@@ -909,10 +910,12 @@ function orderFields(body) {
   if (!buyerName) throw new HttpError(400, 'Enter a first and last name.');
   if (!contact) throw new HttpError(400, 'Enter a phone number or email so we can reach a winner.');
   if (expect.length === 0) throw new HttpError(400, 'No squares selected.');
-  return { cart: cartId(body), buyerName, contact, expect };
+  // Mailing-list sign-up only makes sense with an email address.
+  const mailingList = Boolean(body.mailing_list) && isEmail(contact);
+  return { cart: cartId(body), buyerName, contact, expect, mailingList };
 }
 
-async function sell(env, body, session, url) {
+async function sell(env, body, session, url, ctx) {
   const f = orderFields(body);
   const method = String(body.method || '');
   if (!METHODS.includes(method)) throw new HttpError(400, 'Choose how they paid.');
@@ -926,7 +929,17 @@ async function sell(env, body, session, url) {
     status: 'confirmed',
     source: 'helper',
   });
-  return json({ ok: true, ...r, link: `${url.origin}/?me=${r.token}` });
+  // Buyers who gave an email get their link by email right away; the helper sees
+  // whether it went, so a typo can be fixed while they're still at the table.
+  let emailed = null;
+  let emailError = null;
+  if (isEmail(f.contact) && emailReady(env) && senderFor(cfg, url)) {
+    const order = await orderForEmail(env, 'token', r.token);
+    const sent = await emailBuyer(env, cfg, order, url, 'table');
+    if (sent.ok) emailed = f.contact;
+    else emailError = sent.error;
+  }
+  return json({ ok: true, ...r, link: `${url.origin}/?me=${r.token}`, emailed, email_error: emailError });
 }
 
 // ---------------------------------------------------------------- online orders
@@ -960,6 +973,7 @@ async function buyState(env, url) {
       hold_minutes: Number(cfg.hold_minutes),
       online_max: Number(cfg.online_max),
       reserve_minutes: Number(cfg.reserve_minutes),
+      org_name: cfg.org_name,
       open: cfg.online_open === '1' && cfg.sales_open === '1',
     },
     boards: boards.map((b) => ({

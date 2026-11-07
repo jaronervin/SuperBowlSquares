@@ -1,6 +1,6 @@
 // Online buying: pick squares, enter your name, reserve, then pay with Venmo
 // on your order page (/?me=...). The PTA confirms the payment.
-import { $, esc, api, money, toast, boardHtml, sqLabel, fitBoard, onResize } from './common.js?v=27';
+import { $, esc, api, money, toast, boardHtml, sqLabel, fitBoard, onResize, emailSuggestion, looksLikeEmail } from './common.js?v=28';
 
 const CART_KEY = 'squares-buy-cart';
 let data = null;
@@ -175,10 +175,13 @@ $('#cartCheckout').addEventListener('click', () => {
     <form id="orderForm" class="stack" autocomplete="on" style="margin-top:12px">
       <div class="form-grid">
         <label class="field"><span>Your name</span><input type="text" name="buyer_name" autocomplete="name" required maxlength="60" placeholder="First and last name"></label>
-        <label class="field"><span>Phone or email</span><input type="text" name="contact" autocomplete="email" required maxlength="80" placeholder="So we can reach you if you win"></label>
+        <label class="field"><span>Email (or phone)</span><input type="text" name="contact" autocomplete="email" inputmode="email" autocapitalize="off" spellcheck="false" required maxlength="80" placeholder="We'll email you when you're confirmed"></label>
       </div>
-      <p class="small muted" style="margin:0">Next you'll pay with Venmo. Your squares are saved for ${cfg.reserve_minutes} minutes while you pay,
-        and are yours once the PTA sees your payment.</p>
+      <div class="small hidden" id="emailFix"></div>
+      <label class="row small hidden" id="listRow" style="gap:8px"><input type="checkbox" name="mailing_list">
+        Add me to ${esc(cfg.org_name || 'the organizers')}’s mailing list</label>
+      <p class="small muted" style="margin:0">Next you'll pay with a payment app. Your squares are saved for ${cfg.reserve_minutes} minutes while you pay,
+        and are yours once the organizers see your payment.</p>
       <div class="msg error hidden" id="orderErr" role="alert"></div>
       <div class="row">
         <button class="btn" type="button" id="back">← Back</button>
@@ -189,6 +192,19 @@ $('#cartCheckout').addEventListener('click', () => {
   $('#modal').classList.remove('hidden');
   const close = () => { modalOpen = false; $('#modal').classList.add('hidden'); renderCart(); };
   $('#back').addEventListener('click', close);
+  const contactInput = $('#orderForm').contact;
+  const contactChanged = () => {
+    $('#listRow').classList.toggle('hidden', !looksLikeEmail(contactInput.value));
+    const fix = emailSuggestion(contactInput.value);
+    $('#emailFix').classList.toggle('hidden', !fix);
+    if (fix) $('#emailFix').innerHTML = `Did you mean <button type="button" class="btn sm" id="useFix">${esc(fix)}</button>?`;
+  };
+  contactInput.addEventListener('input', contactChanged);
+  $('#emailFix').addEventListener('click', (e) => {
+    if (!e.target.closest('#useFix')) return;
+    contactInput.value = emailSuggestion(contactInput.value) || contactInput.value;
+    contactChanged();
+  });
   $('#orderForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const f = e.target;
@@ -199,7 +215,10 @@ $('#cartCheckout').addEventListener('click', () => {
       const res = await api('/buy/order', {
         method: 'POST',
         auth: false,
-        body: { cart, expect: holds.map((h) => [h.board, h.idx]), buyer_name: f.buyer_name.value, contact: f.contact.value },
+        body: {
+          cart, expect: holds.map((h) => [h.board, h.idx]), buyer_name: f.buyer_name.value, contact: f.contact.value,
+          mailing_list: f.mailing_list.checked && looksLikeEmail(f.contact.value),
+        },
       });
       newCart();
       location.href = `/?me=${res.token}`;

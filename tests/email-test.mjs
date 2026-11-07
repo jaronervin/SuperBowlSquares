@@ -57,4 +57,25 @@ const c2 = await call('/admin/order/confirm', { token: ad, body: { sale: a.order
 await wait(1200);
 ok(c2.data.emailed === null && sent().length === n, 'buyer with a phone number gets no email');
 
+// In-person sales: email buyers get their link right away; mailing list only with an email.
+const h = (await call('/login', { body: { pin: 'helper123', name: 'Helper' } })).data.token;
+await call('/hold', { token: h, body: { cart: 'helper-cart-m1', board: 1, idx: 40 } });
+let before2 = sent().length;
+const s1 = await call('/sell', { token: h, body: { cart: 'helper-cart-m1', expect: [[1, 40]], buyer_name: 'Tina Table', contact: 'tina@example.com', method: 'cashapp', mailing_list: true } });
+m = sent().at(-1);
+ok(s1.data.emailed === 'tina@example.com' && sent().length === before2 + 1, 'table sale with email: link emailed, helper told');
+ok(m.subject === 'Your squares for GHEMS Super Bowl Squares' && m.html.includes('Thanks, Tina!') && m.html.includes('/?me=' + s1.data.token), 'table email: "Thanks", squares link');
+await call('/hold', { token: h, body: { cart: 'helper-cart-m2', board: 1, idx: 41 } });
+before2 = sent().length;
+const s2 = await call('/sell', { token: h, body: { cart: 'helper-cart-m2', expect: [[1, 41]], buyer_name: 'Phil Phone', contact: '410-555-0199', method: 'cash', mailing_list: true } });
+ok(s2.data.emailed === null && sent().length === before2, 'table sale with phone: no email');
+await call('/buy/hold', { body: { cart: 'web-cart-mail3', board: 1, idx: 42 } });
+await call('/buy/order', { body: { cart: 'web-cart-mail3', expect: [[1, 42]], buyer_name: 'Olive List', contact: 'olive@example.com', mailing_list: true } });
+a = (await call('/admin', { token: ad })).data;
+const by = (name) => a.sales.find((x) => x.buyer_name === name) || a.orders.waiting.find((x) => x.buyer_name === name);
+ok(by('Tina Table').mailing_list === 1, 'email buyer who checked the box is on the list');
+ok(by('Phil Phone').mailing_list === 0, 'phone buyer is never on the list');
+ok(by('Olive List').mailing_list === 1, 'online buyer can join the list');
+ok(by('Olivia Online').mailing_list === 0, 'unchecked box: not on the list');
+
 console.log(fails ? fails + ' FAILED' : 'ALL PASSED');

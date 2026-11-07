@@ -21,6 +21,8 @@ Squares waiting on an online order show striped on every grid and can't be picke
 **Emails** (through Resend, from the group's address at the domain, e.g. `GHEMS PTA <ghems@corkandpin.com>`):
 
 - When a buyer taps **I paid with …**, a notice goes to the "Send online-order notices to" address in Settings, with a button to the Online orders list. Replies go to the buyer if they gave an email.
+- At the sign-up table, a buyer who gives an email gets "Your squares" with their link right away, and the Saved screen says whether it went (so a typo can be fixed on the spot). Buyers who give a phone number scan a QR code to their page instead. The email field suggests fixes for common typos (gmial.com → gmail.com).
+- **Mailing list:** buyers who give an email see an unchecked box to join the organization's mailing list (at the table and online). The admin page marks them "✉ list" and **Download mailing list** saves their names and emails as a spreadsheet, once per address, for the PTA's own newsletter tool. Cork and Pin never sends to the list itself.
 - When you **Confirm** an online order, a buyer who gave an email gets "You're in!" with their squares and personal link. Replies go to the notices address.
 - Setup: create a Resend API key (Sending access, the site's domain) and add it to the worker as the secret `RESEND_API_KEY`; fill in the notices address under Settings; use **Send a test email**. The sender is worked out from the site's address (`ghems.corkandpin.com` sends as `ghems@corkandpin.com`) and isn't editable on the admin page, since it must be at a domain verified in Resend. To override it, set the `email_from` config row directly in the database. Without the key, no emails are sent and everything else works the same.
 

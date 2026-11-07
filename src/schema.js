@@ -85,7 +85,8 @@ CREATE TABLE IF NOT EXISTS sales (
   expires_at   INTEGER,                          -- reserved/pending orders lapse after this
   paid_at      INTEGER,                          -- when the buyer tapped "I've paid"
   confirmed_at INTEGER,
-  ip           TEXT                              -- hashed, to limit online orders per person
+  ip           TEXT,                             -- hashed, to limit online orders per person
+  mailing_list INTEGER NOT NULL DEFAULT 0        -- buyer asked to join the group's mailing list
 );
 CREATE INDEX IF NOT EXISTS sales_status ON sales (status, expires_at);
 
@@ -185,6 +186,10 @@ export const UPGRADES = [
   {
     marker: 'upgrade_pay_apps',
     sql: ["INSERT OR IGNORE INTO config (key, value) VALUES ('cashapp_tag', ''), ('paypal_id', '')"],
+  },
+  {
+    marker: 'upgrade_mailing_list',
+    sql: ['ALTER TABLE sales ADD COLUMN mailing_list INTEGER NOT NULL DEFAULT 0'],
   },
   {
     marker: 'upgrade_emails',

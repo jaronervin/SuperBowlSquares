@@ -73,11 +73,13 @@ export function paidNotice(cfg, order, origin) {
 }
 
 /** To the buyer: payment confirmed. */
-export function confirmedEmail(cfg, order, origin) {
+export function confirmedEmail(cfg, order, origin, kind = 'online') {
   const first = String(order.buyer_name || '').trim().split(/\s+/)[0] || 'there';
-  const heading = `You're in, ${first}!`;
+  const heading = kind === 'table' ? `Thanks, ${first}!` : `You're in, ${first}!`;
   const lines = [
-    `We got your ${money(order.amount_cents)} payment. These squares are yours:`,
+    kind === 'table'
+      ? `Thanks for buying squares${cfg.org_name ? ` and supporting ${esc(cfg.org_name)}` : ''}! Here's what you got (${money(order.amount_cents)}):`
+      : `We got your ${money(order.amount_cents)} payment. These squares are yours:`,
     `<strong style="font-size:17px">${esc(squaresText(order.squares))}</strong>`,
     `Use your link to watch the board. The numbers are drawn once the board fills, and winners show up there during the game. Save this email so you can find it.`,
   ];
@@ -85,7 +87,7 @@ export function confirmedEmail(cfg, order, origin) {
   const button = { label: 'See my squares', href: `${origin}/?me=${order.token}` };
   const footer = `${esc(cfg.org_name || cfg.title || '')}${cfg.contact ? ` · Questions? ${esc(cfg.contact)}` : ' · Questions? Just reply to this email.'}`;
   return {
-    subject: `You're in! Your squares for ${cfg.title || 'the game'}`,
+    subject: kind === 'table' ? `Your squares for ${cfg.title || 'the game'}` : `You're in! Your squares for ${cfg.title || 'the game'}`,
     html: layout(cfg, { heading, lines, button, footer }),
     text: textOf(heading, lines, button, footer),
   };

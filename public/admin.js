@@ -1,7 +1,7 @@
-import { $, esc, api, money, toast, signIn, session, saveSession, sqLabel } from './common.js?v=27';
-import { brandingEditor } from './branding.js?v=27';
-import { runWizard } from './wizard.js?v=27';
-import { METHOD_LABEL } from './pay.js?v=27';
+import { $, esc, api, money, toast, signIn, session, saveSession, sqLabel } from './common.js?v=28';
+import { brandingEditor } from './branding.js?v=28';
+import { runWizard } from './wizard.js?v=28';
+import { METHOD_LABEL } from './pay.js?v=28';
 
 let data = null;
 let saleFilter = '';
@@ -175,13 +175,14 @@ function render() {
       <div class="row">
         <input type="text" id="saleFilter" placeholder="Search name, contact, helper" style="max-width:280px" value="${esc(saleFilter)}">
         <button class="btn sm" data-act="download">Download sales</button>
+        <button class="btn sm" data-act="download-list">Download mailing list (${mailingList().length})</button>
       </div>
     </div>
     <div class="table-wrap"><table><thead><tr><th>When</th><th>Buyer</th><th>Contact</th><th>Squares</th><th class="num">Amount</th><th>Paid by</th><th>Helper</th><th></th></tr></thead><tbody>
     ${shown
       .map(
         (s) => `<tr><td class="small">${when(s.created_at)}</td>
-        <td><strong>${esc(s.buyer_name)}</strong>${s.note ? `<div class="small muted">${esc(s.note)}</div>` : ''}</td>
+        <td><strong>${esc(s.buyer_name)}</strong>${s.mailing_list ? ' <span class="pill drawn" title="Asked to join the mailing list">✉ list</span>' : ''}${s.note ? `<div class="small muted">${esc(s.note)}</div>` : ''}</td>
         <td>${esc(s.contact)}</td>
         <td class="small">${s.squares.map(([b, i]) => sqLabel(b, i)).join(', ')}</td>
         <td class="num">${money(s.unit_cents * s.square_count)}</td>
@@ -314,6 +315,7 @@ function bind() {
       if (a === 'reopen') return act('/admin/board/reopen', { board }, 'Board reopened for sale.');
       if (a === 'delete-board') return confirmDeleteBoard(board);
       if (a === 'download') return downloadSales();
+      if (a === 'download-list') return downloadMailingList();
       if (a === 'wizard') return openWizard();
       if (a === 'toggle-online') {
         const on = data.config.online_open === '1';
@@ -437,9 +439,45 @@ function bind() {
 }
 
 // Every sale as a spreadsheet (CSV), e.g. to keep a record before starting over.
-function downloadSales() {
+// Save rows as a spreadsheet (CSV) file.
+function saveCsv(rows, name) {
   const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const rows = [['When', 'Buyer', 'Contact', 'Squares', 'Count', 'Amount', 'Paid by', 'Helper', 'Note']];
+  const csv = rows.map((r) => r.map(cell).join(',')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  a.download = `${name}-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    URL.revokeObjectURL(a.href);
+    a.remove();
+  }, 1000);
+}
+
+// Everyone who asked to join the mailing list, once per email address.
+function mailingList() {
+  const seen = new Map();
+  for (const s of [...data.sales].reverse()) {
+    if (!s.mailing_list) continue;
+    const email = String(s.contact).trim().toLowerCase();
+    if (!seen.has(email)) seen.set(email, { name: s.buyer_name, email: String(s.contact).trim(), when: s.created_at });
+  }
+  return [...seen.values()];
+}
+
+function downloadMailingList() {
+  const list = mailingList();
+  if (!list.length) return toast('Nobody has asked to join the mailing list yet.');
+  const rows = [['Name', 'First name', 'Last name', 'Email', 'Signed up']];
+  for (const p of list) {
+    const parts = p.name.trim().split(/\s+/);
+    rows.push([p.name, parts[0] || '', parts.slice(1).join(' '), p.email, new Date(p.when).toLocaleDateString()]);
+  }
+  saveCsv(rows, 'mailing-list');
+}
+
+function downloadSales() {
+  const rows = [['When', 'Buyer', 'Contact', 'Squares', 'Count', 'Amount', 'Paid by', 'Helper', 'Note', 'Mailing list']];
   for (const s of [...data.sales].reverse()) {
     rows.push([
       new Date(s.created_at).toLocaleString(),
@@ -451,18 +489,10 @@ function downloadSales() {
       METHOD_LABEL[s.method] || s.method,
       s.helper || '',
       s.note || '',
+      s.mailing_list ? 'yes' : '',
     ]);
   }
-  const csv = rows.map((r) => r.map(cell).join(',')).join('\r\n');
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-  a.download = `squares-sales-${new Date().toISOString().slice(0, 10)}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => {
-    URL.revokeObjectURL(a.href);
-    a.remove();
-  }, 1000);
+  saveCsv(rows, 'squares-sales');
 }
 
 function confirmNewYear() {
@@ -472,7 +502,7 @@ function confirmNewYear() {
     '',
     `${boards.length} board${boards.length === 1 ? '' : 's'}, ${sales.length} sale${sales.length === 1 ? '' : 's'} (${money(totals.collected_cents)}) will be erased.`,
   ];
-  if (sales.length) lines.push('Tap Cancel and use “Download sales” first if you want a record.');
+  if (sales.length) lines.push('Tap Cancel and use “Download sales” (and “Download mailing list”) first if you want a record.');
   lines.push('', 'To confirm, type: START OVER');
   const typed = prompt(lines.join('\n'));
   if (typed === null) return;

@@ -1,5 +1,5 @@
-import { $, esc, api, money, toast, signIn, session, saveSession, boardHtml, sqLabel, fitBoard, onResize } from './common.js?v=27';
-import { payOptions, payLink, handleText, fillsNote, qrHtml } from './pay.js?v=27';
+import { $, esc, api, money, toast, signIn, session, saveSession, boardHtml, sqLabel, fitBoard, onResize, emailSuggestion, looksLikeEmail } from './common.js?v=28';
+import { payOptions, payLink, handleText, fillsNote, qrHtml } from './pay.js?v=28';
 
 const CART_KEY = 'squares-cart';
 
@@ -319,8 +319,11 @@ function openCheckout() {
     <form id="sellForm" class="stack" autocomplete="off">
       <div class="form-grid">
         <label class="field"><span>Buyer's name</span><input type="text" name="buyer_name" required maxlength="60" placeholder="First and last name"></label>
-        <label class="field"><span>Phone (or email) to reach them if they win</span><input type="text" name="contact" required maxlength="80" inputmode="tel" placeholder="e.g. 410-555-0123"></label>
+        <label class="field"><span>Email or phone</span><input type="text" name="contact" required maxlength="80" inputmode="email" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Email gets their link right away"></label>
       </div>
+      <div class="small hidden" id="emailFix"></div>
+      <label class="row small hidden" id="listRow" style="gap:8px"><input type="checkbox" name="mailing_list">
+        Add them to the ${esc(cfg.org_name || 'organization')} mailing list (ask first)</label>
       <div>
         <div class="small muted" style="font-weight:600;margin-bottom:4px">Paying with</div>
         <div class="seg" id="methods">${tabs.map((t) => `<button type="button" class="btn" data-method="${t.id}" aria-pressed="${t.id === method}">${esc(t.label)}</button>`).join('')}</div>
@@ -346,7 +349,25 @@ function openCheckout() {
   refresh();
   updateModalTimer();
   let typing;
-  $('#sellForm').contact.addEventListener('input', () => {
+  const contactInput = $('#sellForm').contact;
+  const contactChanged = () => {
+    const v = contactInput.value;
+    // Mailing list: only for email addresses.
+    $('#listRow').classList.toggle('hidden', !looksLikeEmail(v));
+    // "Did you mean ...@gmail.com?"
+    const fix = emailSuggestion(v);
+    const el = $('#emailFix');
+    el.classList.toggle('hidden', !fix);
+    if (fix) el.innerHTML = `Did you mean <button type="button" class="btn sm" id="useFix">${esc(fix)}</button>?`;
+  };
+  $('#emailFix').addEventListener('click', (e) => {
+    if (!e.target.closest('#useFix')) return;
+    contactInput.value = emailSuggestion(contactInput.value) || contactInput.value;
+    contactChanged();
+    refresh();
+  });
+  contactInput.addEventListener('input', () => {
+    contactChanged();
     clearTimeout(typing);
     typing = setTimeout(refresh, 300); // the Venmo code and note follow the phone number
   });
@@ -384,6 +405,7 @@ function openCheckout() {
           contact: f.contact.value,
           method,
           note: f.note.value,
+          mailing_list: f.mailing_list.checked && looksLikeEmail(f.contact.value),
         },
       });
       showDone(res, f.buyer_name.value, f.contact.value, labels);
@@ -419,31 +441,46 @@ function showDone(res, name, contact, labels) {
   const first = name.trim().split(/\s+/)[0];
   const text = `Thanks ${first}! Your squares (${labels.join(', ')}): ${res.link}`;
   const digits = contact.replace(/[^\d+]/g, '');
-  const isEmail = contact.includes('@');
+  const isEmail = looksLikeEmail(contact);
   const sendHref = isEmail
     ? `mailto:${encodeURIComponent(contact.trim())}?subject=${encodeURIComponent('Your squares')}&body=${encodeURIComponent(text)}`
     : digits.length >= 10
       ? `sms:${digits}?&body=${encodeURIComponent(text)}`
       : null;
-  showModal(`
-    <h2>Saved ✓</h2>
-    <p style="margin-top:0">${res.count} square${res.count === 1 ? '' : 's'} for <strong>${esc(name)}</strong> · ${money(res.amount_cents)}</p>
-    <div class="pay">
+  // Email buyers get their link by email; phone buyers scan the QR code.
+  const emailed = Boolean(res.emailed);
+  const qrBlock = `<div class="pay" id="doneQr">
       ${qrHtml(res.link, 'Their squares page')}
       <div class="stack">
         <div style="font-size:1.15rem;font-weight:700">Have them scan this with their phone camera</div>
         <div class="small">It opens their own page with their squares, the numbers once they're drawn, and the scores during the game.
           Tell them to bookmark it or add it to their home screen.</div>
-        <div class="small muted">No camera handy? ${sendHref ? `${isEmail ? 'Email' : 'Text'} it, or copy` : 'Copy'} the link instead.</div>
       </div>
-    </div>
+    </div>`;
+  let top;
+  if (emailed) {
+    top = `<div class="msg ok">Emailed their link to <strong>${esc(res.emailed)}</strong>. Ask them to check it came through
+        (it may land in Promotions or spam). If it didn't, the address may have a typo: show them the code below.</div>
+      <div><button class="btn sm" type="button" id="showQr">Show QR code instead</button></div>
+      <div class="hidden" id="qrWrap">${qrBlock}</div>`;
+  } else {
+    top = `${isEmail && res.email_error ? `<div class="msg error">Couldn’t email their link (${esc(res.email_error)}). Have them scan this instead.</div>` : ''}${qrBlock}`;
+  }
+  showModal(`
+    <h2>Saved ✓</h2>
+    <p style="margin-top:0">${res.count} square${res.count === 1 ? '' : 's'} for <strong>${esc(name)}</strong> · ${money(res.amount_cents)}</p>
+    ${top}
     <div class="linkbox" id="link" style="margin-top:12px">${esc(res.link)}</div>
     <div class="row" style="margin-top:12px">
-      ${sendHref ? `<a class="btn" href="${esc(sendHref)}">${isEmail ? 'Email' : 'Text'} the link</a>` : ''}
+      ${sendHref ? `<a class="btn" href="${esc(sendHref)}">${isEmail ? 'Email' : 'Text'} the link${emailed ? ' again' : ''}</a>` : ''}
       <button class="btn" type="button" id="copy">Copy link</button>
       <span style="flex:1"></span>
       <button class="btn primary big" type="button" id="next">Next buyer</button>
     </div>`);
+  $('#showQr')?.addEventListener('click', () => {
+    $('#qrWrap').classList.remove('hidden');
+    $('#showQr').remove();
+  });
   $('#copy').addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText(res.link);
