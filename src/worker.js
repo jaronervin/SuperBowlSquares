@@ -7,6 +7,7 @@
 //   admin   – ADMIN_PIN: everything, including money, refunds, number draw.
 
 import { parseEspn, listGames } from './espn.js';
+import { sendEmail, emailReady, fromLine, paidNotice, confirmedEmail, testEmail, isEmail } from './email.js';
 import { schemaStatements, UPGRADES } from './schema.js';
 import { themeCss, validColor, initials, DEFAULT_MAIN, DEFAULT_ACCENT } from '../public/theme.js';
 
@@ -16,6 +17,7 @@ const ADMIN_CONFIG = [
   'price_cents', 'hold_minutes', 'venmo_user', 'cashapp_tag', 'paypal_id', 'prize_text', 'sales_open',
   'online_open', 'online_max', 'reserve_minutes', 'confirm_hours',
   'org_name', 'contact', 'about_text', 'color_main', 'color_accent', 'setup_done', 'logo_ver',
+  'notify_email', 'email_from',
 ];
 const NUMERIC_CONFIG = ['price_cents', 'hold_minutes', 'online_max', 'reserve_minutes', 'confirm_hours'];
 const ONLINE_BUYER = 'Online buyer';
@@ -45,7 +47,7 @@ const SESSION_HOURS = 16;
 const SCORE_CACHE_MS = 30_000;
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     try {
       if (!url.pathname.startsWith('/api/')) {
@@ -60,7 +62,7 @@ export default {
         return brandPage(res, env, url);
       }
       await ensureSchema(env);
-      return await route(request, env, url);
+      return await route(request, env, url, ctx);
     } catch (err) {
       if (err instanceof HttpError) return json({ error: err.message, ...err.extra }, err.status);
       console.error(err);
@@ -99,7 +101,7 @@ class HttpError extends Error {
   }
 }
 
-async function route(request, env, url) {
+async function route(request, env, url, ctx) {
   const path = url.pathname.slice(4); // strip "/api"
   const method = request.method;
 
@@ -120,7 +122,7 @@ async function route(request, env, url) {
     if (method === 'POST' && path === '/buy/release') return release(env, b);
     if (method === 'POST' && path === '/buy/extend') return extend(env, b);
     if (method === 'POST' && path === '/buy/order') return reserveOnline(env, b, request, url);
-    if (method === 'POST' && path === '/buy/paid') return markPaid(env, b);
+    if (method === 'POST' && path === '/buy/paid') return markPaid(env, b, url, ctx);
     if (method === 'POST' && path === '/buy/cancel') return cancelOnline(env, b);
     throw new HttpError(404, 'Not found.');
   }
@@ -135,7 +137,7 @@ async function route(request, env, url) {
   if (method === 'POST' && path === '/sell') return sell(env, body, session, url);
 
   if (session.role !== 'admin') throw new HttpError(403, 'Admin passcode required.');
-  if (method === 'GET' && path === '/admin') return adminState(env);
+  if (method === 'GET' && path === '/admin') return adminState(env, url);
   if (method === 'POST' && path === '/admin/config') return setConfig(env, body);
   if (method === 'POST' && path === '/admin/board/new') return newBoardRoute(env);
   if (method === 'POST' && path === '/admin/board/draw') return drawBoard(env, body);
@@ -149,7 +151,8 @@ async function route(request, env, url) {
   if (method === 'POST' && path === '/admin/refresh-scores') return refreshScores(env);
   if (method === 'GET' && path === '/admin/espn-games') return espnGames(env, url);
   if (method === 'POST' && path === '/admin/sale/void') return voidSale(env, body);
-  if (method === 'POST' && path === '/admin/order/confirm') return confirmOrder(env, body);
+  if (method === 'POST' && path === '/admin/order/confirm') return confirmOrder(env, body, url, ctx);
+  if (method === 'POST' && path === '/admin/email/test') return sendTestEmail(env, url);
   if (method === 'POST' && path === '/admin/order/reject') return rejectOrder(env, body);
   if (method === 'POST' && path === '/admin/passcode') return changePasscode(env, body, session);
   if (method === 'POST' && path === '/admin/logo') return saveLogo(env, body);
@@ -497,6 +500,61 @@ async function boardsWithSquares(env, where) {
     drawn_at: b.drawn_at,
     squares: byBoard.get(b.id),
   }));
+}
+
+// ---------------------------------------------------------------- emails
+
+// The address emails come from: the setting, or <subdomain>@<domain> of the site
+// (ghems.corkandpin.com sends as ghems@corkandpin.com). None on workers.dev.
+function senderFor(cfg, url) {
+  if (cfg.email_from) return cfg.email_from;
+  const parts = url.hostname.split('.');
+  if (parts.length < 3 || url.hostname.endsWith('workers.dev')) return null;
+  return `${parts[0]}@${parts.slice(-2).join('.')}`;
+}
+
+async function orderForEmail(env, by, value) {
+  const o = await env.DB.prepare(
+    `SELECT id, token, code, buyer_name, contact, method, unit_cents, square_count FROM sales WHERE ${by === 'id' ? 'id' : 'token'} = ?`,
+  )
+    .bind(value)
+    .first();
+  if (!o) return null;
+  const { results } = await env.DB.prepare('SELECT board_id, idx FROM squares WHERE sale_id = ? ORDER BY board_id, idx').bind(o.id).all();
+  return { ...o, amount_cents: o.unit_cents * o.square_count, squares: results.map((r) => [r.board_id, r.idx]) };
+}
+
+async function notifyPaid(env, cfg, token, origin) {
+  const from = senderFor(cfg, new URL(origin));
+  if (!cfg.notify_email || !from || !emailReady(env)) return;
+  const order = await orderForEmail(env, 'token', token);
+  if (!order) return;
+  const msg = paidNotice(cfg, order, origin);
+  const r = await sendEmail(env, {
+    ...msg,
+    from: fromLine({ ...cfg, email_from: from }),
+    to: cfg.notify_email,
+    replyTo: isEmail(order.contact) ? order.contact : undefined,
+  });
+  if (!r.ok) console.error('payment notice email failed:', r.error);
+}
+
+async function emailBuyer(env, cfg, order, url) {
+  const msg = confirmedEmail(cfg, order, url.origin);
+  const replyTo = isEmail(cfg.notify_email) ? cfg.notify_email : isEmail(cfg.contact) ? cfg.contact : undefined;
+  const r = await sendEmail(env, { ...msg, from: fromLine({ ...cfg, email_from: senderFor(cfg, url) }), to: order.contact, replyTo });
+  if (!r.ok) console.error('confirmation email failed:', r.error);
+}
+
+async function sendTestEmail(env, url) {
+  const cfg = await getConfig(env);
+  if (!emailReady(env)) throw new HttpError(409, 'Email isn’t set up yet: the RESEND_API_KEY secret is missing in Cloudflare.');
+  if (!cfg.notify_email) throw new HttpError(400, 'Fill in “Send online-order notices to” and save first.');
+  const from = senderFor(cfg, url);
+  if (!from) throw new HttpError(400, 'Fill in “Emails come from” (an address at your domain) and save first.');
+  const r = await sendEmail(env, { ...testEmail({ ...cfg, email_from: from }, url.origin), from: fromLine({ ...cfg, email_from: from }), to: cfg.notify_email });
+  if (!r.ok) throw new HttpError(502, `The email didn’t send: ${r.error}`);
+  return json({ ok: true, to: cfg.notify_email, from });
 }
 
 // ---------------------------------------------------------------- branding
@@ -980,7 +1038,7 @@ async function orderInfo(env, cfg, token) {
   };
 }
 
-async function markPaid(env, body) {
+async function markPaid(env, body, url, ctx) {
   const token = String(body?.token || '');
   const via = PAY_APPS.includes(body?.method) ? body.method : 'online';
   const cfg = await getConfig(env);
@@ -996,6 +1054,8 @@ async function markPaid(env, body) {
     throw new HttpError(409, 'This order is no longer reserved. Its squares may have gone back on sale.');
   }
   await bump(env);
+  // Let the organizers know to check the app (sent after the reply, so the buyer isn't kept waiting).
+  ctx?.waitUntil(notifyPaid(env, cfg, token, url.origin));
   return json({ ok: true });
 }
 
@@ -1037,7 +1097,7 @@ async function sweepExpired(env) {
   await closeOrder(env, "status IN ('reserved', 'pending') AND expires_at < ?", [now()], 'expired');
 }
 
-async function confirmOrder(env, body) {
+async function confirmOrder(env, body, url, ctx) {
   const id = int(body.sale, 'order');
   const res = await env.DB.prepare(
     `UPDATE sales SET status = 'confirmed', confirmed_at = ?, expires_at = NULL
@@ -1053,7 +1113,15 @@ async function confirmOrder(env, body) {
     bumpStmt(env),
   ]);
   await ensureOpenBoard(env);
-  return json({ ok: true });
+  // Tell the buyer, if they gave an email.
+  const cfg = await getConfig(env);
+  const order = await orderForEmail(env, 'id', id);
+  let emailed = null;
+  if (order && isEmail(order.contact) && emailReady(env) && senderFor(cfg, url)) {
+    emailed = order.contact;
+    ctx?.waitUntil(emailBuyer(env, cfg, order, url));
+  }
+  return json({ ok: true, emailed });
 }
 
 async function rejectOrder(env, body) {
@@ -1162,7 +1230,7 @@ function winningIdx(board, qScore) {
 
 // ---------------------------------------------------------------- admin
 
-async function adminState(env) {
+async function adminState(env, adminUrl) {
   // Scores first: on game day this may fill in the teams, which cfg should show.
   const scores = await getScores(env, false);
   const cfg = await getConfig(env);
@@ -1256,6 +1324,7 @@ async function adminState(env) {
     })),
     sales: confirmed,
     orders: { waiting: waiting.reverse(), closed },
+    email: { ready: emailReady(env), from: senderFor(cfg, adminUrl) },
     refunds: refundsOwed,
     winners,
     scores,
@@ -1279,6 +1348,7 @@ async function setConfig(env, body) {
     }
     if (k === 'top_abbr' || k === 'side_abbr') value = value.toUpperCase();
     if (k === 'cashapp_tag' || k === 'venmo_user' || k === 'paypal_id') value = payHandle(k, value);
+    if ((k === 'notify_email' || k === 'email_from') && value && !isEmail(value)) throw new HttpError(400, 'That doesn’t look like an email address.');
     if ((k === 'color_main' || k === 'color_accent') && !validColor(value)) throw new HttpError(400, 'Colors look like #1d4f91.');
     if (k === 'setup_done') value = value === '1' || value === 'true' ? '1' : '0';
     if (k === 'logo_ver') continue; // changes only with the logo itself

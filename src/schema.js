@@ -22,6 +22,8 @@ INSERT OR IGNORE INTO config (key, value) VALUES
   ('venmo_user',     ''),
   ('cashapp_tag',    ''),        -- Cash App $cashtag, without the $
   ('paypal_id',      ''),        -- PayPal.me name, or the account's email
+  ('notify_email',   ''),        -- where online-order payment notices go
+  ('email_from',     ''),        -- sender address; blank = <subdomain>@<domain> of the site
   ('prize_text',     'Each quarter''s winner on every board gets a gift basket.'),
   ('sales_open',     '1'),
   ('online_open',    '0'),       -- buyers can pick and reserve squares at /buy
@@ -183,5 +185,9 @@ export const UPGRADES = [
   {
     marker: 'upgrade_pay_apps',
     sql: ["INSERT OR IGNORE INTO config (key, value) VALUES ('cashapp_tag', ''), ('paypal_id', '')"],
+  },
+  {
+    marker: 'upgrade_emails',
+    sql: ["INSERT OR IGNORE INTO config (key, value) VALUES ('notify_email', ''), ('email_from', '')"],
   },
 ];

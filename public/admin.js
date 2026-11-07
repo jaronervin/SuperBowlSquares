@@ -1,7 +1,7 @@
-import { $, esc, api, money, toast, signIn, session, saveSession, sqLabel } from './common.js?v=21';
-import { brandingEditor } from './branding.js?v=21';
-import { runWizard } from './wizard.js?v=21';
-import { METHOD_LABEL } from './pay.js?v=21';
+import { $, esc, api, money, toast, signIn, session, saveSession, sqLabel } from './common.js?v=22';
+import { brandingEditor } from './branding.js?v=22';
+import { runWizard } from './wizard.js?v=22';
+import { METHOD_LABEL } from './pay.js?v=22';
 
 let data = null;
 let saleFilter = '';
@@ -232,12 +232,19 @@ function render() {
         ${field('cashapp_tag', 'Cash App $cashtag (e.g. $FriendsofGHEMS)')}
         ${field('venmo_user', 'Venmo username (e.g. @GHEMS-PTA)')}
         ${field('paypal_id', 'PayPal.me link or PayPal email')}
+        ${field('notify_email', 'Send online-order notices to (email)', 'email')}
+        ${field('email_from', `Emails come from${data.email.from && !cfg.email_from ? ` (blank = ${data.email.from})` : ''}`, 'email')}
         ${field('online_max', 'Most squares in one online order', 'number', 'min="1" max="100"')}
         ${field('reserve_minutes', 'Minutes an online buyer has to pay', 'number', 'min="5" max="240"')}
         ${field('confirm_hours', 'Hours to confirm an online payment before its squares go back on sale', 'number', 'min="1" max="168"')}
       </div>
       ${field('prize_text', 'Prize line on the public page')}
       <div><button class="btn primary" type="submit">Save settings</button></div>
+      <div class="row small">
+        <span class="pill ${data.email.ready ? 'drawn' : 'refund'}">Email ${data.email.ready ? 'set up' : 'not set up'}</span>
+        <button class="btn sm" type="button" data-act="test-email" ${data.email.ready ? '' : 'disabled'}>Send a test email</button>
+        <span class="muted">Buyers who give an email get a “You’re in!” email when you confirm their online order.</span>
+      </div>
       <p class="small muted">Changing the price only affects new sales. Fill in only the payment apps you use;
         each one gets a pay code at the sign-up table and a pay button for online orders. Leave the rest blank.</p>
     </form></section>`;
@@ -303,7 +310,24 @@ function bind() {
         if (on && !confirm('Turn off online sales? Orders already placed stay; nobody new can buy online.')) return;
         return act('/admin/config', { online_open: on ? '0' : '1' }, on ? 'Online sales off.' : 'Online sales on.');
       }
-      if (a === 'confirm-order') return act('/admin/order/confirm', { sale: Number(el.dataset.sale) }, `Order ${el.dataset.code} confirmed.`);
+      if (a === 'confirm-order') {
+        try {
+          const r = await api('/admin/order/confirm', { method: 'POST', body: { sale: Number(el.dataset.sale) } });
+          toast(`Order ${el.dataset.code} confirmed.${r.emailed ? ` Emailed ${r.emailed}.` : ''}`, 4000);
+        } catch (e) {
+          toast(e.message, 4000);
+        }
+        return load();
+      }
+      if (a === 'test-email') {
+        try {
+          const r = await api('/admin/email/test', { method: 'POST', body: {} });
+          toast(`Test email sent to ${r.to} from ${r.from}. Check that inbox (and spam).`, 6000);
+        } catch (e) {
+          toast(e.message, 6000);
+        }
+        return;
+      }
       if (a === 'reject-order') {
         if (!confirm(`Reject order ${el.dataset.code}? Its squares go back on sale. If they paid, refund them in Venmo.`)) return;
         return act('/admin/order/reject', { sale: Number(el.dataset.sale) }, `Order ${el.dataset.code} rejected.`);
@@ -541,7 +565,7 @@ function onlineHtml({ config: cfg, orders }) {
         ${o.expires_at && actions ? `<div class="muted">back on sale ${when(o.expires_at)}</div>` : ''}</td>
       <td style="text-align:right;white-space:nowrap">${actions || ''}</td></tr>`;
   const head = '<thead><tr><th>Order</th><th>Buyer</th><th>Squares</th><th class="num">Amount</th><th>Status</th><th></th></tr></thead>';
-  let h = `<section class="card"><div class="row" style="justify-content:space-between">
+  let h = `<section class="card" id="online"><div class="row" style="justify-content:space-between">
       <h2 style="margin:0">Online orders${orders.waiting.length ? ` (${orders.waiting.length} waiting)` : ''}</h2>
       <div class="row">
         <span class="pill ${on ? 'open' : 'refund'}">Online sales ${on ? 'on' : 'off'}</span>

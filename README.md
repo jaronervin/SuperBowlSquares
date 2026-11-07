@@ -18,7 +18,11 @@ Turn on **Online sales** on the admin page. The public page then shows a **Buy s
 
 Squares waiting on an online order show striped on every grid and can't be picked. Numbers can't be drawn on a board until every square on it is confirmed. Only confirmed orders count toward money totals. One person (by network) can have at most 5 orders waiting at once.
 
-Email notices (to the organizer when someone pays, and a "you're confirmed" email to the buyer) need a custom domain and aren't set up yet.
+**Emails** (through Resend, from the group's address at the domain, e.g. `GHEMS PTA <ghems@corkandpin.com>`):
+
+- When a buyer taps **I paid with …**, a notice goes to the "Send online-order notices to" address in Settings, with a button to the Online orders list. Replies go to the buyer if they gave an email.
+- When you **Confirm** an online order, a buyer who gave an email gets "You're in!" with their squares and personal link. Replies go to the notices address.
+- Setup: create a Resend API key (Sending access, the site's domain) and add it to the worker as the secret `RESEND_API_KEY`; fill in the notices address under Settings; use **Send a test email**. "Emails come from" can stay blank: `ghems.corkandpin.com` sends as `ghems@corkandpin.com`. Without the key, no emails are sent and everything else works the same.
 
 ## corkandpin.com front page
 
@@ -86,4 +90,5 @@ Then open http://localhost:8787/helper.
 - `npm test` checks the ESPN score parsing, including an overtime game (no server needed).
 - `tests/api-test.mjs` runs the whole flow against a fresh local server: two helpers fighting over one square, sales, auto-new board, the draw, winners, refunds.
 - `tests/online-test.mjs` covers online orders: reserve, pay, confirm, reject, cancel, and a real 1-minute expiry (takes about 80 seconds). Same setup as above.
+- `tests/email-test.mjs` checks both emails against a stand-in for Resend (see the comment at its top).
 - `tests/delete-board-test.mjs` checks deleting a board (confirmation, sales split across boards, totals). Same setup as above.
