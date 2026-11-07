@@ -1,5 +1,5 @@
-import { $, esc, api, money, toast, signIn, session, saveSession, boardHtml, sqLabel, fitBoard, onResize, emailSuggestion, looksLikeEmail } from './common.js?v=28';
-import { payOptions, payLink, handleText, fillsNote, qrHtml } from './pay.js?v=28';
+import { $, esc, api, money, toast, signIn, session, saveSession, boardHtml, sqLabel, fitBoard, onResize, emailSuggestion, looksLikeEmail } from './common.js?v=29';
+import { payOptions, payLink, handleText, fillsNote, qrHtml } from './pay.js?v=29';
 
 const CART_KEY = 'squares-cart';
 
@@ -281,25 +281,31 @@ function openCheckout() {
   const tabs = [...apps.map((o) => ({ ...o, app: true })), { id: 'cash', label: 'Cash' }, { id: 'other', label: 'Other' }];
   let method = tabs[0].id;
 
-  // The payment note is the buyer's phone number when we have one: easy for them
-  // to type (they know it by heart) and it matches the sale's contact exactly.
+  // The payment note is the buyer's own phone number or email, whichever they gave:
+  // easy for them to type (they know it by heart) and it matches the sale's contact.
   const panel = () => {
     const o = tabs.find((t) => t.id === method);
-    const phone = phoneOf($('#sellForm')?.contact.value);
+    const typed = String($('#sellForm')?.contact.value || '').trim();
+    const phone = phoneOf(typed);
+    const email = looksLikeEmail(typed) ? typed : null;
+    const contactNote = phone || email; // what they type as the note
+    const kind = phone ? 'phone number' : 'email';
     if (!o.app) {
       return `<div class="stack"><div class="amount">${amount}</div>
         <div class="small">${o.id === 'cash' ? `Collect ${amount} in cash.` : 'Say how they paid in the note below.'}</div></div>`;
     }
-    const memo = phone ? `Squares ${phone}` : `Squares ${labels.join(' ')}`;
+    const memo = contactNote ? `Squares ${contactNote}` : `Squares ${labels.join(' ')}`;
     const link = payLink(o, cents, memo);
     let noteLine = '';
     if (fillsNote(o)) noteLine = `<br><span class="memo">${esc(memo)}</span>`;
     else if (o.id === 'cashapp') {
-      noteLine = phone
-        ? `<br>Cash App needs a note. Have them type their phone number: <span class="memo">${esc(phone)}</span>`
-        : '<br>Cash App needs a note. Fill in their phone number above, and they type it as the note (or just “Squares”).';
-    } else if (phone) {
-      noteLine = `<br>If they add a note, have them use their phone number: <span class="memo">${esc(phone)}</span>`;
+      noteLine = contactNote
+        ? `<br>Cash App needs a note. Have them type their ${kind}: <span class="memo">${esc(contactNote)}</span>`
+        : '<br>Cash App needs a note. Have them type their phone number or email from above.';
+    } else {
+      noteLine = contactNote
+        ? `<br>Ask them to add their ${kind} as the note: <span class="memo">${esc(contactNote)}</span>`
+        : '<br>Ask them to add their phone number or email from above as the note.';
     }
     return `<div class="pay">
         ${link ? qrHtml(link, o.label) : ''}

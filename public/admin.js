@@ -1,7 +1,7 @@
-import { $, esc, api, money, toast, signIn, session, saveSession, sqLabel } from './common.js?v=28';
-import { brandingEditor } from './branding.js?v=28';
-import { runWizard } from './wizard.js?v=28';
-import { METHOD_LABEL } from './pay.js?v=28';
+import { $, esc, api, money, toast, signIn, session, saveSession, sqLabel } from './common.js?v=29';
+import { brandingEditor } from './branding.js?v=29';
+import { runWizard } from './wizard.js?v=29';
+import { METHOD_LABEL } from './pay.js?v=29';
 
 let data = null;
 let saleFilter = '';
