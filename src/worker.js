@@ -13,13 +13,34 @@ import { themeCss, validColor, initials, DEFAULT_MAIN, DEFAULT_ACCENT } from '..
 const PUBLIC_CONFIG = ['title', 'subtitle', 'top_name', 'side_name', 'prize_text', 'org_name', 'contact', 'about_text', 'logo_ver'];
 const ADMIN_CONFIG = [
   'title', 'subtitle', 'top_name', 'top_abbr', 'side_name', 'side_abbr', 'game_date',
-  'price_cents', 'hold_minutes', 'venmo_user', 'prize_text', 'sales_open',
+  'price_cents', 'hold_minutes', 'venmo_user', 'cashapp_tag', 'paypal_id', 'prize_text', 'sales_open',
   'online_open', 'online_max', 'reserve_minutes', 'confirm_hours',
   'org_name', 'contact', 'about_text', 'color_main', 'color_accent', 'setup_done', 'logo_ver',
 ];
 const NUMERIC_CONFIG = ['price_cents', 'hold_minutes', 'online_max', 'reserve_minutes', 'confirm_hours'];
 const ONLINE_BUYER = 'Online buyer';
-const METHODS = ['venmo', 'cash', 'zelle', 'other'];
+const METHODS = ['cashapp', 'venmo', 'paypal', 'cash', 'zelle', 'other'];
+const PAY_APPS = ['cashapp', 'venmo', 'paypal'];
+// The payment accounts set up, as sent to the sign-up table and buyers' order pages.
+const payConfig = (cfg) => ({ cashapp_tag: cfg.cashapp_tag || '', venmo_user: cfg.venmo_user || '', paypal_id: cfg.paypal_id || '' });
+
+// Accept what people paste ("$Tag", "@user", "https://paypal.me/name") and keep just the name.
+function payHandle(k, raw) {
+  let v = String(raw || '').trim();
+  if (!v) return '';
+  if (k === 'cashapp_tag') {
+    v = v.replace(/^https?:\/\/(www\.)?cash\.app\//i, '').replace(/^\$/, '').split(/[/?#]/)[0];
+    if (!/^[A-Za-z0-9_-]{1,30}$/.test(v)) throw new HttpError(400, 'A Cash App $cashtag looks like $FriendsofGHEMS.');
+  } else if (k === 'venmo_user') {
+    v = v.replace(/^https?:\/\/(www\.)?venmo\.com\/(u\/)?/i, '').replace(/^@/, '').split(/[/?#]/)[0];
+    if (!/^[A-Za-z0-9_-]{1,40}$/.test(v)) throw new HttpError(400, 'A Venmo username looks like @GHEMS-PTA.');
+  } else if (k === 'paypal_id') {
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return v;
+    v = v.replace(/^https?:\/\/(www\.)?paypal\.(me|com\/paypalme)\//i, '').replace(/^paypal\.me\//i, '').replace(/^@/, '').split(/[/?#]/)[0];
+    if (!/^[A-Za-z0-9_.-]{1,40}$/.test(v)) throw new HttpError(400, 'For PayPal, use a PayPal.me link (paypal.me/YourName) or the account’s email.');
+  }
+  return v;
+}
 const SESSION_HOURS = 16;
 const SCORE_CACHE_MS = 30_000;
 
@@ -663,6 +684,7 @@ async function helperState(env, url, session) {
       price_cents: Number(cfg.price_cents),
       hold_minutes: Number(cfg.hold_minutes),
       venmo_user: cfg.venmo_user,
+      pay: payConfig(cfg),
       sales_open: cfg.sales_open === '1',
     },
     boards: boards.map((b) => ({
@@ -921,7 +943,7 @@ async function reserveOnline(env, body, request, url) {
   }
   const r = await placeOrder(env, cfg, {
     ...f,
-    method: 'venmo',
+    method: 'online', // which app becomes known when they tap "I paid with ..."
     status: 'reserved',
     source: 'online',
     code,
@@ -934,7 +956,7 @@ async function reserveOnline(env, body, request, url) {
 // Public view of one order, for the buyer's link.
 async function orderInfo(env, cfg, token) {
   const o = await env.DB.prepare(
-    `SELECT id, status, source, code, unit_cents, square_count, expires_at, created_at
+    `SELECT id, status, source, code, method, unit_cents, square_count, expires_at, created_at
      FROM sales WHERE token = ?`,
   )
     .bind(token)
@@ -952,19 +974,21 @@ async function orderInfo(env, cfg, token) {
     count: o.square_count,
     expires_at: o.expires_at,
     squares: results.map((r) => [r.board_id, r.idx]),
-    venmo_user: cfg.venmo_user,
+    method: o.method,
+    pay: payConfig(cfg),
     t: now(),
   };
 }
 
 async function markPaid(env, body) {
   const token = String(body?.token || '');
+  const via = PAY_APPS.includes(body?.method) ? body.method : 'online';
   const cfg = await getConfig(env);
   const res = await env.DB.prepare(
-    `UPDATE sales SET status = 'pending', paid_at = ?, expires_at = ?
+    `UPDATE sales SET status = 'pending', paid_at = ?, expires_at = ?, method = ?
      WHERE token = ? AND source = 'online' AND status = 'reserved'`,
   )
-    .bind(now(), now() + Number(cfg.confirm_hours || 24) * 3600_000, token)
+    .bind(now(), now() + Number(cfg.confirm_hours || 24) * 3600_000, via, token)
     .run();
   if (res.meta.changes !== 1) {
     const o = await env.DB.prepare('SELECT status FROM sales WHERE token = ?').bind(token).first();
@@ -1254,6 +1278,7 @@ async function setConfig(env, body) {
       throw new HttpError(400, 'Game date must look like 2027-02-14.');
     }
     if (k === 'top_abbr' || k === 'side_abbr') value = value.toUpperCase();
+    if (k === 'cashapp_tag' || k === 'venmo_user' || k === 'paypal_id') value = payHandle(k, value);
     if ((k === 'color_main' || k === 'color_accent') && !validColor(value)) throw new HttpError(400, 'Colors look like #1d4f91.');
     if (k === 'setup_done') value = value === '1' || value === 'true' ? '1' : '0';
     if (k === 'logo_ver') continue; // changes only with the logo itself

@@ -1,6 +1,7 @@
-import { $, esc, api, money, toast, signIn, session, saveSession, sqLabel } from './common.js?v=19';
-import { brandingEditor } from './branding.js?v=19';
-import { runWizard } from './wizard.js?v=19';
+import { $, esc, api, money, toast, signIn, session, saveSession, sqLabel } from './common.js?v=21';
+import { brandingEditor } from './branding.js?v=21';
+import { runWizard } from './wizard.js?v=21';
+import { METHOD_LABEL } from './pay.js?v=21';
 
 let data = null;
 let saleFilter = '';
@@ -19,7 +20,6 @@ async function openWizard() {
   location.reload();
 }
 
-const METHOD_LABEL = { venmo: 'Venmo', cash: 'Cash', zelle: 'Zelle', other: 'Other' };
 const when = (ms) => (ms ? new Date(ms).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : '');
 
 async function load() {
@@ -229,14 +229,17 @@ function render() {
         ${field('game_date', 'Game date (for live scores)', 'date')}
         <label class="field"><span>Price per square ($)</span><input type="number" name="price_dollars" min="1" step="1" value="${Number(cfg.price_cents) / 100}"></label>
         ${field('hold_minutes', 'Minutes a picked square is held', 'number', 'min="1" max="30"')}
-        ${field('venmo_user', 'Venmo username, without the @ (makes the pay QR code)')}
+        ${field('cashapp_tag', 'Cash App $cashtag (e.g. $FriendsofGHEMS)')}
+        ${field('venmo_user', 'Venmo username (e.g. @GHEMS-PTA)')}
+        ${field('paypal_id', 'PayPal.me link or PayPal email')}
         ${field('online_max', 'Most squares in one online order', 'number', 'min="1" max="100"')}
         ${field('reserve_minutes', 'Minutes an online buyer has to pay', 'number', 'min="5" max="240"')}
         ${field('confirm_hours', 'Hours to confirm an online payment before its squares go back on sale', 'number', 'min="1" max="168"')}
       </div>
       ${field('prize_text', 'Prize line on the public page')}
       <div><button class="btn primary" type="submit">Save settings</button></div>
-      <p class="small muted">Changing the price only affects new sales.</p>
+      <p class="small muted">Changing the price only affects new sales. Fill in only the payment apps you use;
+        each one gets a pay code at the sign-up table and a pay button for online orders. Leave the rest blank.</p>
     </form></section>`;
 
   // ---- passcodes

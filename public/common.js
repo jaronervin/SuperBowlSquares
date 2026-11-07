@@ -194,27 +194,6 @@ export function onResize(fn) {
   });
 }
 
-// A Venmo link that opens the app to pay this account, with the amount and
-// note filled in. audience=private keeps the payment off Venmo's public feed.
-export function venmoLink(user, cents, note) {
-  // encodeURIComponent writes spaces as %20 (not +), which Venmo shows as spaces.
-  const q = { txn: 'pay', audience: 'private', amount: (cents / 100).toFixed(2), note };
-  const qs = Object.entries(q).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
-  return `https://venmo.com/${encodeURIComponent(user)}?${qs}`;
-}
-
-// QR code (as SVG) for the order, or the saved/placeholder image when no
-// Venmo username is set. qrcode() comes from /vendor/qrcode-generator.
-export function payQrHtml(user, cents, note) {
-  if (user && typeof qrcode === 'function') {
-    const qr = qrcode(0, 'M');
-    qr.addData(venmoLink(user, cents, note));
-    qr.make();
-    return `<div class="qr" role="img" aria-label="Venmo QR code">${qr.createSvgTag({ cellSize: 4, margin: 3, scalable: true })}</div>`;
-  }
-  return `<img src="/venmo-qr.png" alt="Venmo QR code" onerror="this.onerror=null;this.src='/venmo-qr-placeholder.svg'">`;
-}
-
 // Winning square for a finished quarter on a drawn board.
 export function winningIdx(board, q) {
   if (!board.cols || !board.rows || !q?.done) return null;

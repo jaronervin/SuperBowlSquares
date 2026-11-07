@@ -34,9 +34,16 @@ let a = await admin();
 ok(a.orders.waiting.length === 1 && a.orders.waiting[0].status === 'reserved', 'admin sees waiting order');
 ok(a.totals.collected_cents === 0 && a.totals.waiting_cents === 1500, 'not counted as collected yet');
 
-ok((await call('/buy/paid', { body: { token: tok } })).status === 200, 'buyer taps I have paid');
+ok((await call('/admin/config', { token: ad, body: { cashapp_tag: 'two words' } })).status === 400, 'bad Cash App tag refused');
+ok((await call('/admin/config', { token: ad, body: { cashapp_tag: '$FriendsofGHEMS', venmo_user: 'https://venmo.com/u/GHEMS-PTA', paypal_id: 'https://www.paypal.me/FriendsGHEMS' } })).status === 200, 'payment accounts saved');
+let pay = (await call('/public?full=1&me=' + tok)).data.order.pay;
+ok(pay.cashapp_tag === 'FriendsofGHEMS' && pay.venmo_user === 'GHEMS-PTA' && pay.paypal_id === 'FriendsGHEMS', 'pasted links/handles cleaned to plain names: ' + JSON.stringify(pay));
+await call('/admin/config', { token: ad, body: { paypal_id: 'treasurer@example.org' } });
+ok((await call('/public?full=1&me=' + tok)).data.order.pay.paypal_id === 'treasurer@example.org', 'PayPal email accepted');
+ok((await call('/buy/paid', { body: { token: tok, method: 'cashapp' } })).status === 200, 'buyer taps I paid with Cash App');
 pub = (await call('/public?full=1&me=' + tok)).data;
 ok(pub.order.status === 'pending' && pub.order.expires_at - Date.now() > 23 * 3600_000, 'now pending, held about 24 hours');
+ok(pub.order.method === 'cashapp', 'order records Cash App as the payment app');
 ok((await call('/buy/cancel', { body: { token: tok } })).status === 409, 'cannot cancel after saying paid');
 
 ok((await call('/admin/order/confirm', { token: h, body: { sale: a.orders.waiting[0].id } })).status === 403, 'helper cannot confirm');

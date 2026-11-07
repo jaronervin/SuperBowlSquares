@@ -1,12 +1,7 @@
-import { $, esc, api, money, toast, signIn, session, saveSession, boardHtml, sqLabel, fitBoard, onResize, payQrHtml } from './common.js?v=19';
+import { $, esc, api, money, toast, signIn, session, saveSession, boardHtml, sqLabel, fitBoard, onResize } from './common.js?v=21';
+import { payOptions, payLink, handleText, fillsNote, qrHtml } from './pay.js?v=21';
 
 const CART_KEY = 'squares-cart';
-const METHODS = [
-  ['venmo', 'Venmo'],
-  ['cash', 'Cash'],
-  ['zelle', 'Zelle'],
-  ['other', 'Other'],
-];
 
 let sess = null;
 let data = null;
@@ -271,47 +266,68 @@ function openCheckout() {
   const amount = money(n * cfg.price_cents);
   const labels = holds.map((h) => sqLabel(h.board, h.idx));
   const memo = `Squares ${labels.join(' ')}`;
-  const user = (cfg.venmo_user || '').trim().replace(/^@/, '');
+  const cents = n * cfg.price_cents;
+  // Payment tabs: each app the group set up, then cash and "other".
+  const apps = payOptions(cfg.pay);
+  const tabs = [...apps.map((o) => ({ ...o, app: true })), { id: 'cash', label: 'Cash' }, { id: 'other', label: 'Other' }];
+  let method = tabs[0].id;
+  const panel = (id) => {
+    const o = tabs.find((t) => t.id === id);
+    if (!o.app) {
+      return `<div class="stack"><div class="amount">${amount}</div>
+        <div class="small">${id === 'cash' ? `Collect ${amount} in cash.` : 'Note how they paid in the note below.'}</div></div>`;
+    }
+    const link = payLink(o, cents, memo);
+    return `<div class="pay">
+        ${link ? qrHtml(link, o.label) : ''}
+        <div class="stack">
+          <div class="amount">${amount}</div>
+          <div>${esc(o.label)} <strong>${esc(handleText(o))}</strong></div>
+          <div class="small">${link
+            ? `They scan the code with their phone camera. ${esc(o.label)} opens with ${amount}${fillsNote(o) ? ' and this note' : ''} filled in.`
+            : `They send ${amount} to this account in the ${esc(o.label)} app.`}
+            ${fillsNote(o) ? `<br><span class="memo">${esc(memo)}</span>`
+              : `<br>Have them type this in the note:<br><span class="memo">${esc(memo)}</span>`}</div>
+        </div>
+      </div>`;
+  };
   showModal(`
     <h2>Take payment</h2>
     <p class="muted" style="margin-top:0">${n} square${n === 1 ? '' : 's'}: ${esc(labels.join(', '))}</p>
-    <div class="pay">
-      ${payQrHtml(user, n * cfg.price_cents, memo)}
-      <div class="stack">
-        <div class="amount">${amount}</div>
-        ${user ? `<div>Venmo <strong>@${esc(user)}</strong></div>
-        <div class="small">They scan the code with their phone camera. Venmo opens with ${amount} and this note filled in:<br><span class="memo">${esc(memo)}</span></div>`
-        : `<div class="small">Have them put this in the Venmo note:<br><span class="memo">${esc(memo)}</span></div>`}
-        <div class="small muted" id="modalTimer"></div>
-        <div><button class="btn sm" type="button" id="more">+ More time</button></div>
-      </div>
-    </div>
+    <div class="small muted" style="font-weight:600;margin-bottom:4px">Paying with</div>
+    <div class="seg" id="methods">${tabs.map((t) => `<button type="button" class="btn" data-method="${t.id}" aria-pressed="${t.id === method}">${esc(t.label)}</button>`).join('')}</div>
+    ${apps.length ? '' : '<p class="small muted">Add Cash App, Venmo or PayPal on the admin page (Settings) to show a pay code here.</p>'}
+    <div id="payPanel" style="margin-top:12px">${panel(method)}</div>
+    <div class="row" style="margin-top:8px"><span class="small muted" id="modalTimer"></span>
+      <button class="btn sm" type="button" id="more">+ More time</button></div>
     <hr style="border:none;border-top:1px solid var(--line);margin:16px 0">
     <form id="sellForm" class="stack" autocomplete="off">
       <div class="form-grid">
         <label class="field"><span>Buyer's name</span><input type="text" name="buyer_name" required maxlength="60" placeholder="First and last name"></label>
         <label class="field"><span>Phone or email (to text their link and reach winners)</span><input type="text" name="contact" required maxlength="80" inputmode="email"></label>
       </div>
-      <div>
-        <div class="small muted" style="font-weight:600;margin-bottom:4px">How did they pay?</div>
-        <div class="seg" id="methods">${METHODS.map(([v, l]) => `<button type="button" class="btn" data-method="${v}" aria-pressed="${v === 'venmo'}">${l}</button>`).join('')}</div>
-      </div>
-      <label class="field"><span>Note (optional)</span><input type="text" name="note" maxlength="200" placeholder="e.g. Venmo name is different"></label>
+      <label class="field"><span>Note (optional)</span><input type="text" name="note" maxlength="200" placeholder="e.g. paid from a spouse's account"></label>
       <div class="msg error hidden" id="sellErr" role="alert"></div>
       <div class="row">
         <button class="btn" type="button" id="back">← Back to board</button>
         <span style="flex:1"></span>
-        <button class="btn primary big" type="submit">I saw the ${amount} payment · Save</button>
+        <button class="btn primary big" type="submit" id="saveBtn"></button>
       </div>
       <p class="small muted" style="margin:0">Only tap Save after the payment shows up. Unsaved squares go back on sale when the timer runs out.</p>
     </form>`);
   updateModalTimer();
-  let method = 'venmo';
+  const label = () => {
+    const t = tabs.find((x) => x.id === method);
+    $('#saveBtn').textContent = method === 'other' ? `They paid ${amount} · Save` : `Got ${amount} by ${t.label} · Save`;
+  };
+  label();
   $('#methods').addEventListener('click', (e) => {
     const b = e.target.closest('[data-method]');
     if (!b) return;
     method = b.dataset.method;
     $('#methods').querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', x === b));
+    $('#payPanel').innerHTML = panel(method);
+    label();
   });
   $('#back').addEventListener('click', closeModal);
   $('#more').addEventListener('click', async () => {

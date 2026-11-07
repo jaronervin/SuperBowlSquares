@@ -20,6 +20,8 @@ INSERT OR IGNORE INTO config (key, value) VALUES
   ('price_cents',    '500'),
   ('hold_minutes',   '3'),
   ('venmo_user',     ''),
+  ('cashapp_tag',    ''),        -- Cash App $cashtag, without the $
+  ('paypal_id',      ''),        -- PayPal.me name, or the account's email
   ('prize_text',     'Each quarter''s winner on every board gets a gift basket.'),
   ('sales_open',     '1'),
   ('online_open',    '0'),       -- buyers can pick and reserve squares at /buy
@@ -67,7 +69,7 @@ CREATE TABLE IF NOT EXISTS sales (
   token        TEXT NOT NULL UNIQUE,  -- private link token for the buyer
   buyer_name   TEXT NOT NULL,
   contact      TEXT NOT NULL,
-  method       TEXT NOT NULL,         -- venmo | cash | zelle | other
+  method       TEXT NOT NULL,         -- cashapp | venmo | paypal | cash | zelle | other
   unit_cents   INTEGER NOT NULL,
   square_count INTEGER NOT NULL,
   helper       TEXT,
@@ -177,5 +179,9 @@ export const UPGRADES = [
       'CREATE TABLE IF NOT EXISTS assets (name TEXT PRIMARY KEY, mime TEXT NOT NULL, data TEXT NOT NULL, updated_at INTEGER NOT NULL)',
       "INSERT OR IGNORE INTO config (key, value) VALUES ('org_name', ''), ('contact', ''), ('about_text', ''), ('color_main', '#1d4f91'), ('color_accent', '#f5b700'), ('logo_ver', '0'), ('setup_done', '0')",
     ],
+  },
+  {
+    marker: 'upgrade_pay_apps',
+    sql: ["INSERT OR IGNORE INTO config (key, value) VALUES ('cashapp_tag', ''), ('paypal_id', '')"],
   },
 ];

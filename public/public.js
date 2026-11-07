@@ -1,4 +1,5 @@
-import { $, esc, api, money, toast, boardHtml, winningIdx, scoresHtml, sqLabel, fitBoard, onResize, venmoLink, payQrHtml } from './common.js?v=19';
+import { $, esc, api, money, toast, boardHtml, winningIdx, scoresHtml, sqLabel, fitBoard, onResize } from './common.js?v=21';
+import { payOptions, payLink, handleText, fillsNote, qrHtml, METHOD_LABEL } from './pay.js?v=21';
 
 const params = new URLSearchParams(location.search);
 const me = params.get('me');
@@ -135,27 +136,46 @@ function orderHtml(o, name) {
   const amount = money(o.amount_cents);
   const until = new Date(o.expires_at).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
   if (o.status === 'reserved') {
-    const user = (o.venmo_user || '').trim().replace(/^@/, '');
     const note = orderNote(o);
-    const pay = user
-      ? `<a class="btn primary big" href="${esc(venmoLink(user, o.amount_cents, note))}">Pay ${amount} with Venmo</a>
-         <div class="small muted">Opens Venmo to <strong>@${esc(user)}</strong> with the amount and this note filled in:
-           <span class="memo">${esc(note)}</span></div>
-         <details class="small"><summary>On a computer? Scan with your phone instead</summary>
-           <div class="pay" style="grid-template-columns:180px;margin-top:8px">${payQrHtml(user, o.amount_cents, note)}</div></details>`
+    const apps = payOptions(o.pay);
+    const buttons = apps
+      .map((a) => {
+        const link = payLink(a, o.amount_cents, note);
+        return link
+          ? `<a class="btn primary big" href="${esc(link)}">Pay ${amount} with ${esc(a.label)}</a>`
+          : `<div class="msg">On ${esc(a.label)}, send ${amount} to <strong>${esc(handleText(a))}</strong>.</div>`;
+      })
+      .join('');
+    const noteHelp = apps.length
+      ? `<div class="small">${apps.some(fillsNote) && apps.length === 1 ? 'The note is filled in for you:' : 'Put this in the payment’s note so we can match it to you:'}
+           <br><span class="memo">${esc(note)}</span> <button class="btn sm" type="button" data-act="copy" data-text="${esc(note)}">Copy</button></div>`
+      : '';
+    const qrs = apps
+      .map((a) => ({ a, link: payLink(a, o.amount_cents, note) }))
+      .filter((x) => x.link)
+      .map((x) => `<div class="stack" style="gap:4px;max-width:180px"><strong class="small">${esc(x.a.label)}</strong>${qrHtml(x.link, x.a.label)}</div>`)
+      .join('');
+    const pay = apps.length
+      ? `<div class="row">${buttons}</div>${noteHelp}
+         ${qrs ? `<details class="small"><summary>On a computer? Scan with your phone instead</summary>
+           <div class="row" style="align-items:flex-start;margin-top:8px">${qrs}</div></details>` : ''}`
       : `<div class="msg">Ask ${organizers()} how to pay ${amount}, and mention order <strong>${esc(o.code)}</strong>.</div>`;
+    const paidButtons = apps.length > 1
+      ? `<div class="small muted" style="font-weight:600">After you pay, tell us how:</div>
+         <div class="row">${apps.map((a) => `<button class="btn big" type="button" data-act="paid" data-method="${a.id}">I paid with ${esc(a.label)}</button>`).join('')}</div>`
+      : `<div class="row"><button class="btn big" type="button" data-act="paid" data-method="${apps[0]?.id || ''}">I’ve sent the payment</button></div>`;
     return `<h2>Hi ${esc(name)}! Pay to lock in your squares</h2>
       <p style="margin-top:6px">Your squares <strong>${list}</strong> are saved for you for <strong id="orderLeft"></strong> more.</p>
       <div class="stack">
         <div class="amount">${amount}</div>
         ${pay}
-        <div class="row"><button class="btn big" type="button" data-act="paid">I’ve sent the payment</button>
-          <button class="btn sm ghost" type="button" data-act="cancel">Cancel this order</button></div>
+        ${paidButtons}
+        <div><button class="btn sm ghost" type="button" data-act="cancel">Cancel this order</button></div>
       </div>`;
   }
   if (o.status === 'pending') {
     return `<h2>Thanks, ${esc(name)}!</h2>
-      <p>We’re checking for your ${amount} Venmo payment (order <strong>${esc(o.code)}</strong>).
+      <p>We’re checking for your ${amount} ${esc(METHOD_LABEL[o.method] && o.method !== 'online' ? METHOD_LABEL[o.method] + ' ' : '')}payment (order <strong>${esc(o.code)}</strong>).
         Your squares <strong>${list}</strong> are saved for you until ${esc(until)}.
         This page will say “confirmed” once it’s done. Save this link.</p>`;
   }
@@ -181,10 +201,19 @@ setInterval(tickOrder, 1000);
 $('#hello').addEventListener('click', async (e) => {
   const b = e.target.closest('[data-act]');
   if (!b) return;
+  if (b.dataset.act === 'copy') {
+    try {
+      await navigator.clipboard.writeText(b.dataset.text);
+      toast('Copied. Paste it into the payment note.');
+    } catch {
+      toast('Couldn’t copy. Press and hold the note to copy it.');
+    }
+    return;
+  }
   if (b.dataset.act === 'cancel' && !confirm('Cancel this order? Your squares go back on sale.')) return;
   b.disabled = true;
   try {
-    await api(b.dataset.act === 'paid' ? '/buy/paid' : '/buy/cancel', { method: 'POST', auth: false, body: { token: me } });
+    await api(b.dataset.act === 'paid' ? '/buy/paid' : '/buy/cancel', { method: 'POST', auth: false, body: { token: me, method: b.dataset.method } });
     if (b.dataset.act === 'paid') toast('Thanks! The organizers will confirm your payment.');
   } catch (ex) {
     toast(ex.message, 4000);

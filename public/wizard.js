@@ -1,7 +1,7 @@
 // First-run setup: a few short steps that cover everything a new group needs.
 // Each step saves as you go, so stopping halfway loses nothing.
-import { $, esc, api, toast } from './common.js?v=19';
-import { brandingEditor } from './branding.js?v=19';
+import { $, esc, api, toast } from './common.js?v=21';
+import { brandingEditor } from './branding.js?v=21';
 
 const STEPS = ['Name', 'Logo & colors', 'The game', 'Helpers', 'Done'];
 
@@ -15,6 +15,8 @@ export function runWizard(container, cfg) {
       brand: { main: cfg.color_main, accent: cfg.color_accent, title: cfg.title, orgName: cfg.org_name, logoVer: cfg.logo_ver },
       price: Number(cfg.price_cents || 500) / 100,
       venmo_user: cfg.venmo_user || '',
+      cashapp_tag: cfg.cashapp_tag || '',
+      paypal_id: cfg.paypal_id || '',
       game_date: cfg.game_date || '',
     };
 
@@ -101,16 +103,30 @@ export function runWizard(container, cfg) {
             <label class="field"><span>Game date</span>
               <input type="date" name="game_date" value="${esc(state.game_date)}"></label>
           </div>
-          <label class="field"><span>Venmo username that receives payments (without the @)</span>
-            <input type="text" name="venmo_user" maxlength="60" value="${esc(state.venmo_user)}" placeholder="e.g. GHEMS-PTA" autocapitalize="off"></label>
-          <p class="small muted" style="margin:0">With a Venmo username, the payment screen shows a code that opens Venmo with the amount filled in.
+          <p style="margin:0"><strong>How do you take payments?</strong> Fill in the apps you use and leave the others blank.</p>
+          <div class="form-grid">
+            <label class="field"><span>Cash App $cashtag</span>
+              <input type="text" name="cashapp_tag" maxlength="60" value="${esc(state.cashapp_tag ? '$' + state.cashapp_tag : '')}" placeholder="e.g. $FriendsofGHEMS" autocapitalize="off"></label>
+            <label class="field"><span>Venmo username</span>
+              <input type="text" name="venmo_user" maxlength="60" value="${esc(state.venmo_user ? '@' + state.venmo_user : '')}" placeholder="e.g. @GHEMS-PTA" autocapitalize="off"></label>
+          </div>
+          <label class="field"><span>PayPal.me link or PayPal email</span>
+            <input type="text" name="paypal_id" maxlength="120" value="${esc(state.paypal_id)}" placeholder="e.g. paypal.me/FriendsofGHEMS" autocapitalize="off"></label>
+          <p class="small muted" style="margin:0">Each app you add gets a code at the sign-up table that opens it with the amount filled in. Cash is always an option too.
             The teams fill in on their own once the matchup is set (or pick them on the admin page with “Find the game on ESPN”).</p>`);
         $('#wzForm').addEventListener('submit', async (e) => {
           e.preventDefault();
           const f = e.target;
-          Object.assign(state, { price: Number(f.price.value), game_date: f.game_date.value, venmo_user: f.venmo_user.value.trim().replace(/^@/, '') });
+          Object.assign(state, {
+            price: Number(f.price.value), game_date: f.game_date.value,
+            venmo_user: f.venmo_user.value.trim(), cashapp_tag: f.cashapp_tag.value.trim(), paypal_id: f.paypal_id.value.trim(),
+          });
           try {
-            await save({ price_cents: String(Math.round(state.price * 100)), game_date: state.game_date, venmo_user: state.venmo_user });
+            await save({
+              price_cents: String(Math.round(state.price * 100)), game_date: state.game_date,
+              venmo_user: state.venmo_user, cashapp_tag: state.cashapp_tag, paypal_id: state.paypal_id,
+            });
+            Object.assign(state, { venmo_user: state.venmo_user.replace(/^@/, ''), cashapp_tag: state.cashapp_tag.replace(/^\$/, '') });
             state.step++;
             render();
           } catch (ex) { fail(ex.message); }
