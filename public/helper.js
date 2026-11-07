@@ -1,5 +1,5 @@
-import { $, esc, api, money, toast, signIn, session, saveSession, boardHtml, sqLabel, fitBoard, onResize } from './common.js?v=26';
-import { payOptions, payLink, handleText, fillsNote, qrHtml } from './pay.js?v=26';
+import { $, esc, api, money, toast, signIn, session, saveSession, boardHtml, sqLabel, fitBoard, onResize } from './common.js?v=27';
+import { payOptions, payLink, handleText, fillsNote, qrHtml } from './pay.js?v=27';
 
 const CART_KEY = 'squares-cart';
 
@@ -258,6 +258,16 @@ function closeModal() {
   renderCart();
 }
 
+// A phone number as typed -> digits and a readable form ("410-555-0123"), or null.
+function phoneOf(contact) {
+  const v = String(contact || '').trim();
+  if (!v || v.includes('@')) return null;
+  const d = v.replace(/\D/g, '');
+  if (d.length < 10) return null;
+  const ten = d.length === 11 && d[0] === '1' ? d.slice(1) : d;
+  return ten.length === 10 ? `${ten.slice(0, 3)}-${ten.slice(3, 6)}-${ten.slice(6)}` : d;
+}
+
 function openCheckout() {
   const holds = myHolds();
   if (!holds.length) return;
@@ -265,19 +275,32 @@ function openCheckout() {
   const n = holds.length;
   const amount = money(n * cfg.price_cents);
   const labels = holds.map((h) => sqLabel(h.board, h.idx));
-  const memo = `Squares ${labels.join(' ')}`;
   const cents = n * cfg.price_cents;
   // Payment tabs: each app the group set up, then cash and "other".
   const apps = payOptions(cfg.pay);
   const tabs = [...apps.map((o) => ({ ...o, app: true })), { id: 'cash', label: 'Cash' }, { id: 'other', label: 'Other' }];
   let method = tabs[0].id;
-  const panel = (id) => {
-    const o = tabs.find((t) => t.id === id);
+
+  // The payment note is the buyer's phone number when we have one: easy for them
+  // to type (they know it by heart) and it matches the sale's contact exactly.
+  const panel = () => {
+    const o = tabs.find((t) => t.id === method);
+    const phone = phoneOf($('#sellForm')?.contact.value);
     if (!o.app) {
       return `<div class="stack"><div class="amount">${amount}</div>
-        <div class="small">${id === 'cash' ? `Collect ${amount} in cash.` : 'Note how they paid in the note below.'}</div></div>`;
+        <div class="small">${o.id === 'cash' ? `Collect ${amount} in cash.` : 'Say how they paid in the note below.'}</div></div>`;
     }
+    const memo = phone ? `Squares ${phone}` : `Squares ${labels.join(' ')}`;
     const link = payLink(o, cents, memo);
+    let noteLine = '';
+    if (fillsNote(o)) noteLine = `<br><span class="memo">${esc(memo)}</span>`;
+    else if (o.id === 'cashapp') {
+      noteLine = phone
+        ? `<br>Cash App needs a note. Have them type their phone number: <span class="memo">${esc(phone)}</span>`
+        : '<br>Cash App needs a note. Fill in their phone number above, and they type it as the note (or just “Squares”).';
+    } else if (phone) {
+      noteLine = `<br>If they add a note, have them use their phone number: <span class="memo">${esc(phone)}</span>`;
+    }
     return `<div class="pay">
         ${link ? qrHtml(link, o.label) : ''}
         <div class="stack">
@@ -285,30 +308,27 @@ function openCheckout() {
           <div>${esc(o.label)} <strong>${esc(handleText(o))}</strong></div>
           <div class="small">${link
             ? `They scan the code with their phone camera. ${esc(o.label)} opens with ${amount}${fillsNote(o) ? ' and this note' : ''} filled in.`
-            : `They send ${amount} to this account in the ${esc(o.label)} app.`}
-            ${fillsNote(o) ? `<br><span class="memo">${esc(memo)}</span>`
-              // Cash App insists on a note but can't have it filled in: keep it short.
-              // (Match the payment by name and amount; the helper is watching it arrive.)
-              : o.id === 'cashapp' ? `<br>Cash App needs a note. Have them type: <span class="memo">Squares</span>`
-              : ''}</div>
+            : `They send ${amount} to this account in the ${esc(o.label)} app.`}${noteLine}</div>
         </div>
       </div>`;
   };
+
   showModal(`
     <h2>Take payment</h2>
     <p class="muted" style="margin-top:0">${n} square${n === 1 ? '' : 's'}: ${esc(labels.join(', '))}</p>
-    <div class="small muted" style="font-weight:600;margin-bottom:4px">Paying with</div>
-    <div class="seg" id="methods">${tabs.map((t) => `<button type="button" class="btn" data-method="${t.id}" aria-pressed="${t.id === method}">${esc(t.label)}</button>`).join('')}</div>
-    ${apps.length ? '' : '<p class="small muted">Add Cash App, Venmo or PayPal on the admin page (Settings) to show a pay code here.</p>'}
-    <div id="payPanel" style="margin-top:12px">${panel(method)}</div>
-    <div class="row" style="margin-top:8px"><span class="small muted" id="modalTimer"></span>
-      <button class="btn sm" type="button" id="more">+ More time</button></div>
-    <hr style="border:none;border-top:1px solid var(--line);margin:16px 0">
     <form id="sellForm" class="stack" autocomplete="off">
       <div class="form-grid">
         <label class="field"><span>Buyer's name</span><input type="text" name="buyer_name" required maxlength="60" placeholder="First and last name"></label>
-        <label class="field"><span>Phone or email (to text their link and reach winners)</span><input type="text" name="contact" required maxlength="80" inputmode="email"></label>
+        <label class="field"><span>Phone (or email) to reach them if they win</span><input type="text" name="contact" required maxlength="80" inputmode="tel" placeholder="e.g. 410-555-0123"></label>
       </div>
+      <div>
+        <div class="small muted" style="font-weight:600;margin-bottom:4px">Paying with</div>
+        <div class="seg" id="methods">${tabs.map((t) => `<button type="button" class="btn" data-method="${t.id}" aria-pressed="${t.id === method}">${esc(t.label)}</button>`).join('')}</div>
+        ${apps.length ? '' : '<p class="small muted">Add Cash App, Venmo or PayPal on the admin page (Settings) to show a pay code here.</p>'}
+      </div>
+      <div id="payPanel"></div>
+      <div class="row"><span class="small muted" id="modalTimer"></span>
+        <button class="btn sm" type="button" id="more">+ More time</button></div>
       <label class="field"><span>Note (optional)</span><input type="text" name="note" maxlength="200" placeholder="e.g. paid from a spouse's account"></label>
       <div class="msg error hidden" id="sellErr" role="alert"></div>
       <div class="row">
@@ -318,19 +338,24 @@ function openCheckout() {
       </div>
       <p class="small muted" style="margin:0">Only tap Save after the payment shows up. Unsaved squares go back on sale when the timer runs out.</p>
     </form>`);
-  updateModalTimer();
-  const label = () => {
+  const refresh = () => {
+    $('#payPanel').innerHTML = panel();
     const t = tabs.find((x) => x.id === method);
     $('#saveBtn').textContent = method === 'other' ? `They paid ${amount} · Save` : `Got ${amount} by ${t.label} · Save`;
   };
-  label();
+  refresh();
+  updateModalTimer();
+  let typing;
+  $('#sellForm').contact.addEventListener('input', () => {
+    clearTimeout(typing);
+    typing = setTimeout(refresh, 300); // the Venmo code and note follow the phone number
+  });
   $('#methods').addEventListener('click', (e) => {
     const b = e.target.closest('[data-method]');
     if (!b) return;
     method = b.dataset.method;
     $('#methods').querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', x === b));
-    $('#payPanel').innerHTML = panel(method);
-    label();
+    refresh();
   });
   $('#back').addEventListener('click', closeModal);
   $('#more').addEventListener('click', async () => {
@@ -402,11 +427,19 @@ function showDone(res, name, contact, labels) {
       : null;
   showModal(`
     <h2>Saved ✓</h2>
-    <p>${res.count} square${res.count === 1 ? '' : 's'} for <strong>${esc(name)}</strong> · ${money(res.amount_cents)}</p>
-    <p class="small muted">Send them their link so they can watch their squares and the numbers:</p>
-    <div class="linkbox" id="link">${esc(res.link)}</div>
+    <p style="margin-top:0">${res.count} square${res.count === 1 ? '' : 's'} for <strong>${esc(name)}</strong> · ${money(res.amount_cents)}</p>
+    <div class="pay">
+      ${qrHtml(res.link, 'Their squares page')}
+      <div class="stack">
+        <div style="font-size:1.15rem;font-weight:700">Have them scan this with their phone camera</div>
+        <div class="small">It opens their own page with their squares, the numbers once they're drawn, and the scores during the game.
+          Tell them to bookmark it or add it to their home screen.</div>
+        <div class="small muted">No camera handy? ${sendHref ? `${isEmail ? 'Email' : 'Text'} it, or copy` : 'Copy'} the link instead.</div>
+      </div>
+    </div>
+    <div class="linkbox" id="link" style="margin-top:12px">${esc(res.link)}</div>
     <div class="row" style="margin-top:12px">
-      ${sendHref ? `<a class="btn primary" href="${esc(sendHref)}">${isEmail ? 'Email' : 'Text'} the link</a>` : ''}
+      ${sendHref ? `<a class="btn" href="${esc(sendHref)}">${isEmail ? 'Email' : 'Text'} the link</a>` : ''}
       <button class="btn" type="button" id="copy">Copy link</button>
       <span style="flex:1"></span>
       <button class="btn primary big" type="button" id="next">Next buyer</button>

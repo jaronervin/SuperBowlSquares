@@ -1,5 +1,5 @@
-import { $, esc, api, money, toast, boardHtml, winningIdx, scoresHtml, sqLabel, fitBoard, onResize } from './common.js?v=26';
-import { payOptions, payLink, handleText, fillsNote, qrHtml, METHOD_LABEL } from './pay.js?v=26';
+import { $, esc, api, money, toast, boardHtml, winningIdx, scoresHtml, sqLabel, fitBoard, onResize } from './common.js?v=27';
+import { payOptions, payLink, handleText, fillsNote, qrHtml, METHOD_LABEL } from './pay.js?v=27';
 
 const params = new URLSearchParams(location.search);
 const me = params.get('me');

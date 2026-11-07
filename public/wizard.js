@@ -1,7 +1,7 @@
 // First-run setup: a few short steps that cover everything a new group needs.
 // Each step saves as you go, so stopping halfway loses nothing.
-import { $, esc, api, toast } from './common.js?v=26';
-import { brandingEditor } from './branding.js?v=26';
+import { $, esc, api, toast } from './common.js?v=27';
+import { brandingEditor } from './branding.js?v=27';
 
 const STEPS = ['Name', 'Logo & colors', 'The game', 'Helpers', 'Done'];
 
