@@ -1,5 +1,5 @@
-import { $, esc, api, money, toast, signIn, session, saveSession, boardHtml, sqLabel, fitBoard, onResize } from './common.js?v=25';
-import { payOptions, payLink, handleText, fillsNote, qrHtml } from './pay.js?v=25';
+import { $, esc, api, money, toast, signIn, session, saveSession, boardHtml, sqLabel, fitBoard, onResize } from './common.js?v=26';
+import { payOptions, payLink, handleText, fillsNote, qrHtml } from './pay.js?v=26';
 
 const CART_KEY = 'squares-cart';
 
@@ -287,7 +287,10 @@ function openCheckout() {
             ? `They scan the code with their phone camera. ${esc(o.label)} opens with ${amount}${fillsNote(o) ? ' and this note' : ''} filled in.`
             : `They send ${amount} to this account in the ${esc(o.label)} app.`}
             ${fillsNote(o) ? `<br><span class="memo">${esc(memo)}</span>`
-              : `<br>Have them type this in the note:<br><span class="memo">${esc(memo)}</span>`}</div>
+              // Cash App insists on a note but can't have it filled in: keep it short.
+              // (Match the payment by name and amount; the helper is watching it arrive.)
+              : o.id === 'cashapp' ? `<br>Cash App needs a note. Have them type: <span class="memo">Squares</span>`
+              : ''}</div>
         </div>
       </div>`;
   };
