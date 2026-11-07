@@ -2,7 +2,7 @@
 //   Cash App: https://cash.app/$tag/15      amount filled in, note typed by the buyer
 //   Venmo:    https://venmo.com/user?...    amount and note filled in
 //   PayPal:   https://paypal.me/name/15USD  amount filled in; with only an email, nothing is
-import { esc } from './common.js?v=24';
+import { esc } from './common.js?v=25';
 
 export const PAY_APPS = [
   { id: 'cashapp', label: 'Cash App', key: 'cashapp_tag' },
